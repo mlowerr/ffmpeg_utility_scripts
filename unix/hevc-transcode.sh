@@ -153,8 +153,9 @@ process_file() {
                 output_audio_streams=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$temp_out" 2>/dev/null | wc -l)
                 
                 if [[ "$input_audio_streams" -gt 0 && "$output_audio_streams" -lt "$input_audio_streams" ]]; then
-                    printf 'Error: Audio stream count mismatch for %q (%d input, %d output). Incompatible codec? Keeping source.\n' "$f" "$input_audio_streams" "$output_audio_streams"
+                    printf 'Error: Audio stream count mismatch for %q (%d input, %d output). Incompatible codec? Keeping source.\n' "$f" "$input_audio_streams" "$output_audio_streams" >&2
                     rm -f -- "$temp_out"
+                    ((FAILED_COUNT++))
                 else
                     if mv -- "$temp_out" "$output"; then
                         if rm -- "$f"; then
