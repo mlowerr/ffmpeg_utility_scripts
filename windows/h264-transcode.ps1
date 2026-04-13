@@ -33,7 +33,7 @@ param(
     [switch]$UseAMF
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # Determine video codec and quality settings based on hardware acceleration option
 $videoCodec = "libx264"
@@ -115,67 +115,77 @@ try {
     
     # 3. Process collected files
     foreach ($file in $filesToProcess) {
-        $fileIndex++
-        
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        $directory = $file.DirectoryName
+        try {
+            $fileIndex++
+            
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+            $directory = $file.DirectoryName
 
-        $output = Join-Path $directory ($baseName + "_REDU.mp4")
-        $tempOutput = Join-Path $directory ($baseName + "_REDU.tmp.mp4")
+            $output = Join-Path $directory ($baseName + "_REDU.mp4")
+            $tempOutput = Join-Path $directory ($baseName + "_REDU.tmp.mp4")
 
-        if (Test-Path -LiteralPath $tempOutput) {
-            Remove-Item -LiteralPath $tempOutput -Force
-        }
+            if (Test-Path -LiteralPath $tempOutput) {
+                Remove-Item -LiteralPath $tempOutput -Force
+            }
 
-        # Print progress message with blank lines (batched for efficiency)
-        Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
-        
-        Write-Host "Transcoding '$($file.FullName)' using $videoCodec..."
+            # Print progress message with blank lines (batched for efficiency)
+            Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
+            
+            Write-Host "Transcoding '$($file.FullName)' using $videoCodec..."
 
-        & ffmpeg -hide_banner -loglevel warning -stats `
-            -i $file.FullName `
-            -map 0:v:0? -map 0:a? `
-            -c:v $videoCodec `
-            @qualityOpts `
-            -preset $preset `
-            -c:a copy `
-            -map_metadata -1 `
-            -movflags +faststart `
-            -y `
-            -- $tempOutput
+            & ffmpeg -hide_banner -loglevel warning -stats `
+                -i $file.FullName `
+                -map 0:v:0? -map 0:a? `
+                -c:v $videoCodec `
+                @qualityOpts `
+                -preset $preset `
+                -c:a copy `
+                -map_metadata -1 `
+                -movflags +faststart `
+                -y `
+                -- $tempOutput
 
-        # Print two blank lines after ffmpeg
-        Write-Host "`n`n"
+            # Print two blank lines after ffmpeg
+            Write-Host "`n`n"
 
-        if ($LASTEXITCODE -eq 0) {
-            if ((Test-Path -LiteralPath $tempOutput) -and ((Get-Item -LiteralPath $tempOutput).Length -gt 0)) {
-                # Verify output file integrity before deleting source
-                $ffprobeTest = & ffprobe -v error $tempOutput 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Move-Item -LiteralPath $tempOutput -Destination $output
-                    Remove-Item -LiteralPath $file.FullName
-                    Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
+            if ($LASTEXITCODE -eq 0) {
+                if ((Test-Path -LiteralPath $tempOutput) -and ((Get-Item -LiteralPath $tempOutput).Length -gt 0)) {
+                    # Verify output file integrity before deleting source
+                    $ffprobeTest = & ffprobe -v error $tempOutput 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Move-Item -LiteralPath $tempOutput -Destination $output
+                        Remove-Item -LiteralPath $file.FullName
+                        Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
+                    }
+                    else {
+                        Write-Host "Error: Output file verification failed for '$($file.FullName)'. Keeping source."
+                        Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                    }
                 }
                 else {
-                    Write-Host "Error: Output file verification failed for '$($file.FullName)'. Keeping source."
-                    Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                    Write-Host "Error: Temporary output '$([System.IO.Path]::GetFileName($tempOutput))' is empty. Keeping source '$($file.Name)'."
+                    if (Test-Path -LiteralPath $tempOutput) {
+                        Remove-Item -LiteralPath $tempOutput -Force
+                    }
                 }
             }
             else {
-                Write-Host "Error: Temporary output '$([System.IO.Path]::GetFileName($tempOutput))' is empty. Keeping source '$($file.Name)'."
+                Write-Host "Error: ffmpeg failed on '$($file.Name)'. Keeping source."
                 if (Test-Path -LiteralPath $tempOutput) {
                     Remove-Item -LiteralPath $tempOutput -Force
                 }
             }
-        }
-        else {
-            Write-Host "Error: ffmpeg failed on '$($file.Name)'. Keeping source."
-            if (Test-Path -LiteralPath $tempOutput) {
-                Remove-Item -LiteralPath $tempOutput -Force
-            }
-        }
 
-        $tempOutput = $null
+            $tempOutput = $null
+        }
+        catch {
+            Write-Warning "Unexpected error processing '$($file.FullName)': $_"
+            if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
+                Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+            }
+            $tempOutput = $null
+            continue
+        }
     }
 }
 finally {
