@@ -123,7 +123,7 @@ process_file() {
     # shellcheck disable=SC2086
     if ffmpeg -hide_banner -loglevel warning -stats \
             -i "$f" \
-            -map 0:v:0? -map 0:a? \
+            -map "0:v:0?" -map "0:a?" \
             -c:v "$VIDEO_CODEC" \
             $QUALITY_OPTS \
             -preset "$PRESET" \
@@ -138,9 +138,19 @@ process_file() {
         if [[ -s "$temp_out" ]]; then
             # Verify output file integrity before deleting source
             if ffprobe -v error "$temp_out" >/dev/null 2>&1; then
-                mv -- "$temp_out" "$output"
-                rm -- "$f"
-                printf 'Successfully transcoded %q to %q. Source deleted.\n' "$f" "$output"
+                # Validate audio stream count wasn't dropped due to incompatible codec
+                local input_audio_streams output_audio_streams
+                input_audio_streams=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$f" 2>/dev/null | wc -l)
+                output_audio_streams=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$temp_out" 2>/dev/null | wc -l)
+                
+                if [[ "$input_audio_streams" -gt 0 && "$output_audio_streams" -lt "$input_audio_streams" ]]; then
+                    printf 'Error: Audio stream count mismatch for %q (%d input, %d output). Incompatible codec? Keeping source.\n' "$f" "$input_audio_streams" "$output_audio_streams"
+                    rm -f -- "$temp_out"
+                else
+                    mv -- "$temp_out" "$output"
+                    rm -- "$f"
+                    printf 'Successfully transcoded %q to %q. Source deleted.\n' "$f" "$output"
+                fi
             else
                 printf 'Error: Output file verification failed for %q. Keeping source.\n' "$f"
                 rm -f -- "$temp_out"
