@@ -202,7 +202,7 @@ if [[ "$RECURSE" == true ]]; then
     while IFS= read -r -d '' f; do
         local base_name output
         base_name=$(basename "$f")
-        [[ "$base_name" == *_HEVC.mp4 ]] && continue
+        [[ "${base_name,,}" == *_hevc.mp4 ]] && continue
         output="${f%.*}_HEVC.mp4"
         [[ -e "$output" ]] && continue
         files_to_process+=("$f")
@@ -231,7 +231,7 @@ else
     for f in *.mp4; do
         local output
         [[ -f "$f" ]] || continue
-        [[ "$f" == *_HEVC.mp4 ]] && continue
+        [[ "${f,,}" == *_hevc.mp4 ]] && continue
         output="${f%.*}_HEVC.mp4"
         [[ -e "$output" ]] && continue
         files_to_process+=("$f")
