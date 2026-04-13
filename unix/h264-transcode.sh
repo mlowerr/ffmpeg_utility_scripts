@@ -29,6 +29,9 @@
 
 set -u
 
+# Track processing failures for exit code
+FAILED_COUNT=0
+
 # Parse arguments
 RECURSE=false
 USE_QSV=false
@@ -80,15 +83,19 @@ rename_files() {
     for f in "$dir"/*" "*; do
         [[ -f "$f" ]] || continue
 
-        local new_name
-        new_name="${f// /_}"
+        local filename new_filename new_name
+        filename=$(basename "$f")
+        new_filename="${filename// /_}"
+        new_name="$dir/$new_filename"
 
-        if [[ -e "$new_name" && "$f" != "$new_name" ]]; then
-            echo "Skipping rename: '$f' -> '$new_name' (target already exists)"
+        # Skip if no change needed
+        [[ "$f" == "$new_name" ]] && continue
+
+        # Use mv -n to avoid race condition (fails if target exists)
+        if ! mv -n -v -- "$f" "$new_name" 2>/dev/null; then
+            echo "Warning: Failed to rename '$f' -> '$new_name' (target exists or error)" >&2
             continue
         fi
-
-        mv -v -- "$f" "$new_name"
     done
 }
 
@@ -101,7 +108,9 @@ process_file() {
     local dir
     dir=$(dirname "$f")
     local base_name
-    base_name=$(basename "$f" .mp4)
+    # Strip extension case-insensitively (.mp4, .MP4, .Mp4, etc.)
+    base_name=$(basename "$f")
+    base_name="${base_name%.[Mm][Pp]4}"
 
     local output="$dir/${base_name}_REDU.mp4"
     local temp_out="$dir/${base_name}_REDU.tmp.mp4"
@@ -147,23 +156,35 @@ process_file() {
                     printf 'Error: Audio stream count mismatch for %q (%d input, %d output). Incompatible codec? Keeping source.\n' "$f" "$input_audio_streams" "$output_audio_streams"
                     rm -f -- "$temp_out"
                 else
-                    mv -- "$temp_out" "$output"
-                    rm -- "$f"
-                    printf 'Successfully transcoded %q to %q. Source deleted.\n' "$f" "$output"
+                    if mv -- "$temp_out" "$output"; then
+                        if rm -- "$f"; then
+                            printf 'Successfully transcoded %q to %q. Source deleted.\n' "$f" "$output"
+                        else
+                            printf 'Warning: Transcoded %q but failed to remove source.\n' "$f" >&2
+                            ((FAILED_COUNT++))
+                        fi
+                    else
+                        printf 'Error: Failed to move temp file to output for %q.\n' "$f" >&2
+                        rm -f -- "$temp_out"
+                        ((FAILED_COUNT++))
+                    fi
                 fi
             else
-                printf 'Error: Output file verification failed for %q. Keeping source.\n' "$f"
+                printf 'Error: Output file verification failed for %q. Keeping source.\n' "$f" >&2
                 rm -f -- "$temp_out"
+                ((FAILED_COUNT++))
             fi
         else
-            printf 'Error: Temporary output %q is empty. Keeping source %q.\n' "$temp_out" "$f"
+            printf 'Error: Temporary output %q is empty. Keeping source %q.\n' "$temp_out" "$f" >&2
             rm -f -- "$temp_out"
+            ((FAILED_COUNT++))
         fi
     else
         # Print two blank lines after ffmpeg
         printf '\n\n'
-        printf 'Error: ffmpeg failed on %q. Keeping source.\n' "$f"
+        printf 'Error: ffmpeg failed on %q. Keeping source.\n' "$f" >&2
         rm -f -- "$temp_out"
+        ((FAILED_COUNT++))
     fi
     temp_output=""
 }
@@ -176,8 +197,9 @@ if [[ "$RECURSE" == true ]]; then
     done < <(find . -type d -print0)
 
     # Collect eligible files in a single pass
-    declare -a files_to_process
+    files_to_process=()
     while IFS= read -r -d '' f; do
+        local base_name output
         base_name=$(basename "$f")
         [[ "$base_name" == *_REDU.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
@@ -204,8 +226,9 @@ else
     rename_files "."
 
     # Collect eligible files in a single pass
-    declare -a files_to_process
+    files_to_process=()
     for f in *.mp4; do
+        local output
         [[ -f "$f" ]] || continue
         [[ "$f" == *_REDU.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
@@ -228,3 +251,6 @@ else
         process_file "$f" "$current_index" "$total_files"
     done
 fi
+
+# Exit with non-zero status if any files failed processing
+exit $(( FAILED_COUNT > 0 ? 1 : 0 ))
