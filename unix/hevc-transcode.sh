@@ -2,7 +2,7 @@
 # HEVC/H.265 Video Transcoding Script
 # ===================================
 # This script transcodes MP4 video files to HEVC/H.265 format using ffmpeg.
-# It significantly reduces file size while maintaining quality using CRF 26.
+# It significantly reduces file size while maintaining quality using CRF 24.
 #
 # WHAT IT DOES:
 # - Renames files with spaces to use underscores
@@ -56,20 +56,20 @@ trap 'rm -f -- "$temp_output"; exit' INT TERM EXIT
 # Determine video codec and quality settings based on hardware acceleration option
 VIDEO_CODEC="libx265"
 PRESET="medium"
-QUALITY_OPTS="-crf 26"
+QUALITY_OPTS="-crf 24"
 
 if [[ "$USE_QSV" == true ]]; then
     VIDEO_CODEC="hevc_qsv"
     PRESET="medium"
-    QUALITY_OPTS="-global_quality 26"
+    QUALITY_OPTS="-global_quality 24"
 elif [[ "$USE_NVENC" == true ]]; then
     VIDEO_CODEC="hevc_nvenc"
     PRESET="p4"
-    QUALITY_OPTS="-rc vbr -cq 26"
+    QUALITY_OPTS="-rc vbr -cq 24"
 elif [[ "$USE_AMF" == true ]]; then
     VIDEO_CODEC="hevc_amf"
     PRESET="speed"
-    QUALITY_OPTS="-qp_i 26 -qp_p 26 -qp_b 26"
+    QUALITY_OPTS="-qp_i 24 -qp_p 24 -qp_b 24"
 fi
 
 # Sanitize filename for safe use in shell

@@ -147,7 +147,7 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 
 | Setting | Software | Intel QSV | NVIDIA NVENC | AMD AMF |
 |---------|----------|-----------|--------------|---------|
-| Quality | CRF 26 | Global Quality 26 | CQ 26 | QP 26 |
+| Quality | CRF 24 | Global Quality 24 | CQ 24 | QP 24 |
 | H.264 Preset | veryfast | fast | p4 | speed |
 | HEVC Preset | medium | medium | p4 | speed |
 

@@ -1,7 +1,7 @@
 # H.264 Video Transcoding Script
 # ===============================
 # This script transcodes MP4 video files to H.264 format using ffmpeg.
-# It reduces file size while maintaining quality using CRF 26.
+# It reduces file size while maintaining quality using CRF 24.
 #
 # WHAT IT DOES:
 # - Renames files with spaces to use underscores
@@ -38,22 +38,22 @@ $ErrorActionPreference = "Stop"
 # Determine video codec and quality settings based on hardware acceleration option
 $videoCodec = "libx264"
 $preset = "veryfast"
-$qualityOpts = @("-crf", "26")
+$qualityOpts = @("-crf", "24")
 
 if ($UseQuickSync) {
     $videoCodec = "h264_qsv"
     $preset = "fast"
-    $qualityOpts = @("-global_quality", "26")
+    $qualityOpts = @("-global_quality", "24")
 }
 elseif ($UseNVENC) {
     $videoCodec = "h264_nvenc"
     $preset = "p4"
-    $qualityOpts = @("-rc", "vbr", "-cq", "26")
+    $qualityOpts = @("-rc", "vbr", "-cq", "24")
 }
 elseif ($UseAMF) {
     $videoCodec = "h264_amf"
     $preset = "speed"
-    $qualityOpts = @("-qp_i", "26", "-qp_p", "26", "-qp_b", "26")
+    $qualityOpts = @("-qp_i", "24", "-qp_p", "24", "-qp_b", "24")
 }
 
 $tempOutput = $null
