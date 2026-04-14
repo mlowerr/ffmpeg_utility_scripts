@@ -150,8 +150,9 @@ try {
 
             if ($LASTEXITCODE -eq 0) {
                 if ((Test-Path -LiteralPath $tempOutput) -and ((Get-Item -LiteralPath $tempOutput).Length -gt 0)) {
-                    # Verify output file integrity before deleting source
-                    $ffprobeTest = & ffprobe -v error $tempOutput 2>&1
+                    # Verify output file integrity before deleting source.
+                    # Suppress ffprobe stderr so problematic files are handled silently.
+                    $null = & ffprobe -v error -- $tempOutput 2>$null
                     if ($LASTEXITCODE -eq 0) {
                         Move-Item -LiteralPath $tempOutput -Destination $output
                         Remove-Item -LiteralPath $file.FullName
