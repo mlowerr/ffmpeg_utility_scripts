@@ -68,7 +68,7 @@ def collect_files(root: Path, recurse: bool) -> List[Path]:
     refresh_discovery = root.rglob("*") if recurse else root.glob("*")
     files_to_process: List[Path] = []
     for file_path in refresh_discovery:
-        if not file_path.is_file():
+        if not file_path.is_file() or file_path.suffix.lower() != ".mkv":
             continue
         if file_path.name.lower().endswith("_hevc.mkv"):
             continue
