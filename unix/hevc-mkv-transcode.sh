@@ -16,6 +16,7 @@
 # USAGE:
 #   ./hevc-mkv-transcode.sh           # Process current directory only (software encoding)
 #   ./hevc-mkv-transcode.sh -r        # Process recursively from current directory
+#   ./hevc-mkv-transcode.sh -t 8      # Limit ffmpeg/x265 thread usage to 8 threads
 #   ./hevc-mkv-transcode.sh -r -q     # Use Intel Quick Sync hardware acceleration
 #   ./hevc-mkv-transcode.sh -r -n     # Use NVIDIA NVENC hardware acceleration
 #   ./hevc-mkv-transcode.sh -r -a     # Use AMD AMF hardware acceleration
@@ -31,14 +32,32 @@ RECURSE=false
 USE_QSV=false
 USE_NVENC=false
 USE_AMF=false
+THREADS=0
 
-while getopts "rqna" opt; do
+while getopts ":rqnat:" opt; do
     case $opt in
         r) RECURSE=true ;;
         q) USE_QSV=true ;;
         n) USE_NVENC=true ;;
         a) USE_AMF=true ;;
-        *) echo "Usage: $0 [-r] [-q|-n|-a]"; exit 1 ;;
+        t)
+            if [[ "$OPTARG" =~ ^[1-9][0-9]*$ ]]; then
+                THREADS="$OPTARG"
+            else
+                echo "Error: -t requires a positive integer (got '$OPTARG')." >&2
+                echo "Usage: $0 [-r] [-q|-n|-a] [-t THREADS]"
+                exit 1
+            fi
+            ;;
+        :)
+            echo "Error: Option -$OPTARG requires an argument." >&2
+            echo "Usage: $0 [-r] [-q|-n|-a] [-t THREADS]"
+            exit 1
+            ;;
+        \?)
+            echo "Usage: $0 [-r] [-q|-n|-a] [-t THREADS]"
+            exit 1
+            ;;
     esac
 done
 
@@ -63,6 +82,16 @@ elif [[ "$USE_AMF" == true ]]; then
     VIDEO_CODEC="hevc_amf"
     PRESET="speed"
     QUALITY_OPTS="-qp_i 24 -qp_p 24 -qp_b 24"
+fi
+
+THREAD_OPTS=()
+X265_OPTS=()
+if [[ "$THREADS" -gt 0 ]]; then
+    THREAD_OPTS=(-threads "$THREADS")
+    if [[ "$VIDEO_CODEC" == "libx265" ]]; then
+        # libx265 manages its own worker pool; "pools" is the reliable knob.
+        X265_OPTS=(-x265-params "pools=$THREADS")
+    fi
 fi
 
 sanitize_filename() {
@@ -114,11 +143,13 @@ process_file() {
             -i "$f" \
             -map "0:v:0?" -map "0:a?" -map "0:s?" \
             -c:v "$VIDEO_CODEC" \
+            "${X265_OPTS[@]}" \
             $QUALITY_OPTS \
             -preset "$PRESET" \
             -c:a copy \
             -c:s copy \
             -map_metadata -1 \
+            "${THREAD_OPTS[@]}" \
             -y \
             -- "$temp_out"; then
         printf '\n\n'

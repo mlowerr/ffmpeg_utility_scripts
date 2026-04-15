@@ -83,12 +83,15 @@ Process all `.mp4` files in the current directory:
 
 # Linux/macOS - HEVC encoding (MKV input/output)
 ./unix/hevc-mkv-transcode.sh
+./unix/hevc-mkv-transcode.sh -t 8
 
 # Windows - HEVC encoding (MKV input/output)
 .\windows\hevc-mkv-transcode.ps1
+.\windows\hevc-mkv-transcode.ps1 -Threads 8
 
 # Cross-platform Python - HEVC encoding (MKV input/output)
 python3 ./hevc-mkv-transcode.py
+python3 ./hevc-mkv-transcode.py --threads 8
 ```
 
 ### Recursive Processing
@@ -100,12 +103,15 @@ Process all `.mp4` files from the current directory downward:
 ./unix/h264-transcode.sh -r
 ./unix/hevc-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r
+./unix/hevc-mkv-transcode.sh -r -t 8
 
 # Windows
 .\windows\h264-transcode.ps1 -Recurse
 .\windows\hevc-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse
+.\windows\hevc-mkv-transcode.ps1 -Recurse -Threads 8
 python3 .\hevc-mkv-transcode.py --recurse
+python3 .\hevc-mkv-transcode.py --recurse --threads 8
 ```
 
 ### Hardware Acceleration
@@ -171,6 +177,7 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 | HEVC Preset | medium | medium | p4 | speed |
 
 **Note:** Hardware encoders trade some quality for speed. For archival storage, software encoding is recommended.
+For MKV HEVC scripts, thread limits are available as `-t <N>` (Unix), `-Threads <N>` (PowerShell), and `--threads <N>` (Python), with `libx265` using that value for its worker pool.
 
 ## Troubleshooting
 

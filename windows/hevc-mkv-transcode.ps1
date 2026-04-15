@@ -7,7 +7,9 @@ param(
     [switch]$Recurse,
     [switch]$UseQuickSync,
     [switch]$UseNVENC,
-    [switch]$UseAMF
+    [switch]$UseAMF,
+    [ValidateRange(0, 2147483647)]
+    [int]$Threads = 0
 )
 
 $ErrorActionPreference = "Continue"
@@ -30,6 +32,15 @@ elseif ($UseAMF) {
     $videoCodec = "hevc_amf"
     $preset = "speed"
     $qualityOpts = @("-qp_i", "24", "-qp_p", "24", "-qp_b", "24")
+}
+
+$threadOpts = @()
+$x265Opts = @()
+if ($Threads -gt 0) {
+    $threadOpts = @("-threads", "$Threads")
+    if ($videoCodec -eq "libx265") {
+        $x265Opts = @("-x265-params", "pools=$Threads")
+    }
 }
 
 $tempOutput = $null
@@ -98,11 +109,13 @@ try {
                 -i $file.FullName `
                 -map 0:v:0? -map 0:a? -map 0:s? `
                 -c:v $videoCodec `
+                @x265Opts `
                 @qualityOpts `
                 -preset $preset `
                 -c:a copy `
                 -c:s copy `
                 -map_metadata -1 `
+                @threadOpts `
                 -y `
                 -- $tempOutput
 
