@@ -61,13 +61,13 @@ def rename_files(files: Iterable[Path]) -> None:
 
 
 def collect_files(root: Path, recurse: bool) -> List[Path]:
-    candidates = list(root.rglob("*.mkv")) if recurse else list(root.glob("*.mkv"))
-    candidates = [p for p in candidates if p.is_file()]
+    discovery = root.rglob("*") if recurse else root.glob("*")
+    candidates = [p for p in discovery if p.is_file() and p.suffix.lower() == ".mkv"]
     rename_files(candidates)
 
-    refresh = list(root.rglob("*.mkv")) if recurse else list(root.glob("*.mkv"))
+    refresh_discovery = root.rglob("*") if recurse else root.glob("*")
     files_to_process: List[Path] = []
-    for file_path in refresh:
+    for file_path in refresh_discovery:
         if not file_path.is_file():
             continue
         if file_path.name.lower().endswith("_hevc.mkv"):
