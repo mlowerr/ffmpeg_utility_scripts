@@ -188,9 +188,17 @@ try {
                     # Suppress ffprobe stderr so problematic files are handled silently.
                     $null = & ffprobe -v error -- $tempOutput 2>$null
                     if ($LASTEXITCODE -eq 0) {
-                        Move-Item -LiteralPath $tempOutput -Destination $output
-                        Remove-Item -LiteralPath $file.FullName
-                        Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
+                        try {
+                            Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
+                            Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
+                            Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
+                        }
+                        catch {
+                            Write-Host "Error: Failed finalizing '$($file.FullName)'. Keeping source. $_"
+                            if (Test-Path -LiteralPath $tempOutput) {
+                                Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                            }
+                        }
                     }
                     else {
                         Write-Host "Error: Output file verification failed for '$($file.FullName)'. Keeping source."

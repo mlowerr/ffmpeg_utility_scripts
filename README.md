@@ -18,10 +18,13 @@ A collection of cross-platform video transcoding scripts using FFmpeg. Supports 
 .
 ├── unix/
 │   ├── h264-transcode.sh      # H.264 encoding (Bash)
-│   └── hevc-transcode.sh      # HEVC/H.265 encoding (Bash)
+│   ├── hevc-transcode.sh      # HEVC/H.265 encoding for MP4 (Bash)
+│   └── hevc-mkv-transcode.sh  # HEVC/H.265 encoding for MKV (Bash)
 ├── windows/
 │   ├── h264-transcode.ps1     # H.264 encoding (PowerShell)
-│   └── hevc-transcode.ps1     # HEVC/H.265 encoding (PowerShell)
+│   ├── hevc-transcode.ps1     # HEVC/H.265 encoding for MP4 (PowerShell)
+│   └── hevc-mkv-transcode.ps1 # HEVC/H.265 encoding for MKV (PowerShell)
+├── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
 ├── HARDWARE_ACCEL_GUIDE.md    # Hardware acceleration setup guide
 └── README.md                  # This file
 ```
@@ -77,6 +80,15 @@ Process all `.mp4` files in the current directory:
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\hevc-transcode.ps1
+
+# Linux/macOS - HEVC encoding (MKV input/output)
+./unix/hevc-mkv-transcode.sh
+
+# Windows - HEVC encoding (MKV input/output)
+.\windows\hevc-mkv-transcode.ps1
+
+# Cross-platform Python - HEVC encoding (MKV input/output)
+python3 ./hevc-mkv-transcode.py
 ```
 
 ### Recursive Processing
@@ -87,10 +99,13 @@ Process all `.mp4` files from the current directory downward:
 # Linux/macOS
 ./unix/h264-transcode.sh -r
 ./unix/hevc-transcode.sh -r
+./unix/hevc-mkv-transcode.sh -r
 
 # Windows
 .\windows\h264-transcode.ps1 -Recurse
 .\windows\hevc-transcode.ps1 -Recurse
+.\windows\hevc-mkv-transcode.ps1 -Recurse
+python3 .\hevc-mkv-transcode.py --recurse
 ```
 
 ### Hardware Acceleration
@@ -109,6 +124,7 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 # Linux/macOS with Intel Quick Sync
 ./unix/h264-transcode.sh -r -q
 ./unix/hevc-transcode.sh -q
+./unix/hevc-mkv-transcode.sh -q
 
 # Linux/macOS with NVIDIA GPU
 ./unix/h264-transcode.sh -r -n
@@ -117,6 +133,8 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 # Windows with NVIDIA GPU
 .\windows\h264-transcode.ps1 -Recurse -UseNVENC
 .\windows\hevc-transcode.ps1 -UseNVENC
+.\windows\hevc-mkv-transcode.ps1 -UseNVENC
+python3 .\hevc-mkv-transcode.py --nvenc
 ```
 
 See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instructions.
@@ -124,16 +142,17 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 ## How It Works
 
 1. **File Preparation**: Renames files with spaces to use underscores
-2. **File Collection**: Scans for eligible `.mp4` files (skips already-transcoded files)
-3. **Transcoding**: Converts video using specified codec, copies audio without re-encoding
+2. **File Collection**: Scans for eligible `.mp4`/`.mkv` files (skips already-transcoded files)
+3. **Transcoding**: Converts video using specified codec, copies audio (and MKV subtitles) without re-encoding
 4. **Verification**: Validates output file integrity with ffprobe
 5. **Cleanup**: Deletes source file only after successful verification
 
 ## Output Files
 
 - **H.264**: Creates `*_REDU.mp4` files
-- **HEVC**: Creates `*_HEVC.mp4` files
-- **Temporary**: Uses `*.tmp.mp4` during processing (auto-cleaned)
+- **HEVC (MP4 workflow)**: Creates `*_HEVC.mp4` files
+- **HEVC (MKV workflow)**: Creates `*_HEVC.mkv` files
+- **Temporary**: Uses `*.tmp.mp4` or `*.tmp.mkv` during processing (auto-cleaned)
 
 ## Safety Features
 
@@ -158,7 +177,7 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 ### "No eligible MP4 files found to process"
 - The script found no `.mp4` files that haven't already been processed
 - Check that your files have the `.mp4` extension
-- Check that you don't already have `*_REDU.mp4` or `*_HEVC.mp4` versions
+- Check that you don't already have `*_REDU.mp4`, `*_HEVC.mp4`, or `*_HEVC.mkv` versions
 
 ### "ffmpeg failed" or "Output file verification failed"
 - Ensure FFmpeg is installed and in your PATH: `ffmpeg -version`
