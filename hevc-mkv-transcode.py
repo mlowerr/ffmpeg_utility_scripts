@@ -25,7 +25,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-q", "--quick-sync", action="store_true", help="Use Intel Quick Sync")
     parser.add_argument("-n", "--nvenc", action="store_true", help="Use NVIDIA NVENC")
     parser.add_argument("-a", "--amf", action="store_true", help="Use AMD AMF")
-    return parser.parse_args()
+    parser.add_argument(
+        "-t",
+        "--threads",
+        type=int,
+        default=0,
+        help="Limit ffmpeg/x265 thread usage (positive integer, software mode recommended)",
+    )
+    args = parser.parse_args()
+    if args.threads < 0:
+        parser.error("--threads must be zero or a positive integer")
+    return args
 
 
 def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
@@ -101,7 +111,15 @@ def stream_count(path: Path, selector: str) -> int:
     return len([line for line in proc.stdout.splitlines() if line.strip()])
 
 
-def transcode_file(file_path: Path, index: int, total: int, video_codec: str, preset: str, quality_opts: Sequence[str]) -> None:
+def transcode_file(
+    file_path: Path,
+    index: int,
+    total: int,
+    video_codec: str,
+    preset: str,
+    quality_opts: Sequence[str],
+    threads: int,
+) -> None:
     global FAILED_COUNT, TEMP_OUTPUT
 
     output = file_path.with_name(f"{file_path.stem}_HEVC.mkv")
@@ -113,6 +131,12 @@ def transcode_file(file_path: Path, index: int, total: int, video_codec: str, pr
 
     print(f"\n\nProcessing file {index} of {total}\n")
     print(f"Transcoding '{file_path}' using {video_codec}...")
+    thread_opts: List[str] = []
+    x265_opts: List[str] = []
+    if threads > 0:
+        thread_opts = ["-threads", str(threads)]
+        if video_codec == "libx265":
+            x265_opts = ["-x265-params", f"pools={threads}"]
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -130,6 +154,7 @@ def transcode_file(file_path: Path, index: int, total: int, video_codec: str, pr
         "0:s?",
         "-c:v",
         video_codec,
+        *x265_opts,
         *quality_opts,
         "-preset",
         preset,
@@ -139,6 +164,7 @@ def transcode_file(file_path: Path, index: int, total: int, video_codec: str, pr
         "copy",
         "-map_metadata",
         "-1",
+        *thread_opts,
         "-y",
         str(temp_output),
     ]
@@ -208,7 +234,7 @@ def main() -> int:
 
     total = len(files)
     for idx, file_path in enumerate(files, start=1):
-        transcode_file(file_path, idx, total, video_codec, preset, quality_opts)
+        transcode_file(file_path, idx, total, video_codec, preset, quality_opts, args.threads)
 
     return 1 if FAILED_COUNT > 0 else 0
 
