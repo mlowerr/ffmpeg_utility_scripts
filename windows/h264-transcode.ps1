@@ -1,11 +1,14 @@
 # H.264 Video Transcoding Script
 # ===============================
 # This script transcodes MP4 video files to H.264 format using ffmpeg.
-# It reduces file size while maintaining quality using CRF 24.
+# It reduces file size while maintaining quality using CRF 24 for standard
+# sources and automatically downscales 4K inputs to 1080p (CRF 22) for
+# improved stability.
 #
 # WHAT IT DOES:
 # - Renames files with spaces to use underscores
 # - Transcodes .mp4 files to H.264 (libx264 codec, or hardware accel if requested)
+# - Detects 4K/UltraHD sources via ffprobe and forces stable 1080p downscale settings
 # - Copies audio streams without re-encoding
 # - Strips metadata to avoid stream mismatch errors
 # - Deletes original files after successful transcoding
@@ -24,6 +27,7 @@
 #
 # REQUIREMENTS:
 # - ffmpeg must be installed and in your PATH
+# - ffprobe must be installed and in your PATH (used for resolution detection + validation)
 # - PowerShell 5.1 or later
 
 param(
@@ -131,14 +135,37 @@ try {
             # Print progress message with blank lines (batched for efficiency)
             Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
             
-            Write-Host "Transcoding '$($file.FullName)' using $videoCodec..."
+            # Detect source width to decide whether to force the 4K-safe profile.
+            # For widths > 1920, force software H.264 + 1080p downscale to avoid
+            # memory allocation/driver instability observed with large sources.
+            $detectedWidth = & ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 -- $file.FullName 2>$null
+
+            $activeCodec = $videoCodec
+            $activePreset = $preset
+            $activeQualityOpts = $qualityOpts
+
+            $parsedWidth = 0
+            if ([int]::TryParse(($detectedWidth | Select-Object -First 1), [ref]$parsedWidth) -and $parsedWidth -gt 1920) {
+                Write-Host "4K/UHD detected ($parsedWidth px): forcing 1080p downscale profile for stability."
+                $activeCodec = "libx264"
+                $activePreset = "veryfast"
+                $activeQualityOpts = @("-vf", "scale=1920:1080", "-crf", "22")
+            }
+            elseif ($parsedWidth -gt 0) {
+                Write-Host "Detected source width: $parsedWidth px. Using selected/default encode profile."
+            }
+            else {
+                Write-Host "Warning: Could not determine source width via ffprobe. Using selected/default encode profile."
+            }
+
+            Write-Host "Transcoding '$($file.FullName)' using $activeCodec..."
 
             & ffmpeg -hide_banner -loglevel warning -stats `
                 -i $file.FullName `
                 -map 0:v:0? -map 0:a? `
-                -c:v $videoCodec `
-                @qualityOpts `
-                -preset $preset `
+                -c:v $activeCodec `
+                @activeQualityOpts `
+                -preset $activePreset `
                 -c:a copy `
                 -map_metadata -1 `
                 -movflags +faststart `
