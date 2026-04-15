@@ -131,27 +131,29 @@ process_file() {
     # Print progress message with blank lines
     printf '\n\nProcessing file %s of %s\n\n\n' "$current" "$total"
     
-    # Detect source width to decide whether to force the 4K-safe profile.
-    # For widths > 1920, force software H.264 + 1080p downscale to avoid
-    # memory allocation/driver instability observed with large sources.
-    local width active_codec active_preset
+    # Detect source dimensions to decide whether to force the 4K-safe profile.
+    # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
+    # then downscale into a 1080p bounding box while preserving aspect ratio.
+    local width height active_codec active_preset
     local -a active_quality_opts
-    width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width \
-        -of default=noprint_wrappers=1:nokey=1 -- "$f" 2>/dev/null | head -n 1)
+    read -r width height < <(
+        ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+            -of csv=p=0:s=' ' -- "$f" 2>/dev/null | head -n 1
+    )
 
     active_codec="$VIDEO_CODEC"
     active_preset="$PRESET"
     active_quality_opts=("${QUALITY_OPTS[@]}")
 
-    if [[ "$width" =~ ^[0-9]+$ ]] && (( width > 1920 )); then
-        printf '4K/UHD detected (%s px): forcing 1080p downscale profile for stability.\n' "$width"
+    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]] && (( width >= 3840 || height >= 2160 )); then
+        printf 'UHD/4K detected (%sx%s): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
         active_codec="libx264"
         active_preset="veryfast"
-        active_quality_opts=(-vf scale=1920:1080 -crf 22)
-    elif [[ "$width" =~ ^[0-9]+$ ]]; then
-        printf 'Detected source width: %s px. Using selected/default encode profile.\n' "$width"
+        active_quality_opts=(-vf "scale=1920:1080:force_original_aspect_ratio=decrease" -crf 22)
+    elif [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+        printf 'Detected source dimensions: %sx%s. Using selected/default encode profile.\n' "$width" "$height"
     else
-        printf 'Warning: Could not determine source width via ffprobe. Using selected/default encode profile.\n'
+        printf 'Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile.\n'
     fi
 
     printf 'Transcoding %q using %s...\n' "$f" "$active_codec"

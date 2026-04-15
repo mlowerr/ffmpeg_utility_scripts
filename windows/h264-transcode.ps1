@@ -135,27 +135,34 @@ try {
             # Print progress message with blank lines (batched for efficiency)
             Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
             
-            # Detect source width to decide whether to force the 4K-safe profile.
-            # For widths > 1920, force software H.264 + 1080p downscale to avoid
-            # memory allocation/driver instability observed with large sources.
-            $detectedWidth = & ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 -- $file.FullName 2>$null
+            # Detect source dimensions to decide whether to force the 4K-safe profile.
+            # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
+            # then downscale into a 1080p bounding box while preserving aspect ratio.
+            $detectedDimensions = & ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x -- $file.FullName 2>$null
 
             $activeCodec = $videoCodec
             $activePreset = $preset
             $activeQualityOpts = $qualityOpts
 
             $parsedWidth = 0
-            if ([int]::TryParse(($detectedWidth | Select-Object -First 1), [ref]$parsedWidth) -and $parsedWidth -gt 1920) {
-                Write-Host "4K/UHD detected ($parsedWidth px): forcing 1080p downscale profile for stability."
+            $parsedHeight = 0
+            $dimensionLine = ($detectedDimensions | Select-Object -First 1)
+            if ($dimensionLine -match '^\s*(\d+)x(\d+)\s*$') {
+                $parsedWidth = [int]$matches[1]
+                $parsedHeight = [int]$matches[2]
+            }
+
+            if (($parsedWidth -ge 3840) -or ($parsedHeight -ge 2160)) {
+                Write-Host "UHD/4K detected (${parsedWidth}x${parsedHeight}): forcing aspect-safe 1080p downscale profile for stability."
                 $activeCodec = "libx264"
                 $activePreset = "veryfast"
-                $activeQualityOpts = @("-vf", "scale=1920:1080", "-crf", "22")
+                $activeQualityOpts = @("-vf", "scale=1920:1080:force_original_aspect_ratio=decrease", "-crf", "22")
             }
-            elseif ($parsedWidth -gt 0) {
-                Write-Host "Detected source width: $parsedWidth px. Using selected/default encode profile."
+            elseif (($parsedWidth -gt 0) -and ($parsedHeight -gt 0)) {
+                Write-Host "Detected source dimensions: ${parsedWidth}x${parsedHeight}. Using selected/default encode profile."
             }
             else {
-                Write-Host "Warning: Could not determine source width via ffprobe. Using selected/default encode profile."
+                Write-Host "Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile."
             }
 
             Write-Host "Transcoding '$($file.FullName)' using $activeCodec..."
