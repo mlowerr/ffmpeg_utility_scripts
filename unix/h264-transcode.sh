@@ -138,7 +138,7 @@ process_file() {
     local -a active_quality_opts
     read -r width height < <(
         ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
-            -of csv=p=0:s=' ' -- "$f" 2>/dev/null | head -n 1
+            -of csv=p=0:s=x -- "$f" 2>/dev/null | head -n 1 | awk -Fx 'NF>=2 {print $1, $2}'
     )
 
     active_codec="$VIDEO_CODEC"
@@ -228,7 +228,8 @@ if [[ "$RECURSE" == true ]]; then
     # Collect eligible files in a single pass
     files_to_process=()
     while IFS= read -r -d '' f; do
-        local base_name output
+        base_name=""
+        output=""
         base_name=$(basename "$f")
         [[ "${base_name,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
@@ -257,7 +258,7 @@ else
     # Collect eligible files in a single pass
     files_to_process=()
     for f in *.mp4; do
-        local output
+        output=""
         [[ -f "$f" ]] || continue
         [[ "${f,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
