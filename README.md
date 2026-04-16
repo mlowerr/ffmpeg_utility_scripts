@@ -190,6 +190,7 @@ For MKV HEVC scripts, thread limits are available as `-t <N>` (Unix), `-Threads 
 - Ensure FFmpeg is installed and in your PATH: `ffmpeg -version`
 - Check that the source file isn't corrupted: `ffprobe -v error input.mp4`
 - For hardware encoding, ensure your GPU/drivers support the codec
+- For very large H.264 sources (for example, 4K/UHD inputs), use the latest scripts so automatic 1080p fallback can trigger correctly and avoid high-memory encoder failures
 
 ### Hardware encoding not available
 - Check supported encoders: `ffmpeg -encoders | grep -E "(qsv|nvenc|amf)"`
