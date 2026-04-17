@@ -156,7 +156,8 @@ try {
                 Write-Host "UHD/4K detected (${parsedWidth}x${parsedHeight}): forcing aspect-safe 1080p downscale profile for stability."
                 $activeCodec = "libx264"
                 $activePreset = "veryfast"
-                $activeQualityOpts = @("-vf", "scale=1920:1080:force_original_aspect_ratio=decrease", "-crf", "22")
+                # Use min(1920,iw):-2 to ensure even height for H.264
+                $activeQualityOpts = @("-vf", "scale='min(1920,iw)':-2", "-crf", "22")
             }
             elseif (($parsedWidth -gt 0) -and ($parsedHeight -gt 0)) {
                 Write-Host "Detected source dimensions: ${parsedWidth}x${parsedHeight}. Using selected/default encode profile."

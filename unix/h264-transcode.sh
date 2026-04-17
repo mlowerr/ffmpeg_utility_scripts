@@ -149,7 +149,9 @@ process_file() {
         printf 'UHD/4K detected (%sx%s): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
         active_codec="libx264"
         active_preset="veryfast"
-        active_quality_opts=(-vf "scale=1920:1080:force_original_aspect_ratio=decrease" -crf 22)
+        # Force even height (-2) and ensure we don't accidentally upscale a small source 
+        # that somehow triggered the branch (though condition should prevent that).
+        active_quality_opts=(-vf "scale='min(1920,iw)':-2" -crf 22)
     elif [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
         printf 'Detected source dimensions: %sx%s. Using selected/default encode profile.\n' "$width" "$height"
     else

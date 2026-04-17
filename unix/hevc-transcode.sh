@@ -124,31 +124,44 @@ process_file() {
     rm -f -- "$temp_out"
     temp_output="$temp_out"
 
-    # Detect resolution for 4K downscaling
-    local resolution width height scale_filter
-    resolution=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$f" 2>/dev/null)
-    width=$(echo "$resolution" | cut -d'x' -f1)
-    height=$(echo "$resolution" | cut -d'x' -f2)
-    scale_filter=""
+    # Detect source dimensions to decide whether to force the 4K-safe profile.
+    # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
+    # then downscale into a 1080p bounding box while preserving aspect ratio.
+    local width height active_codec active_preset
+    local active_quality_opts
+    read -r width height < <(
+        ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+            -of csv=p=0:s=x -- "$f" 2>/dev/null | head -n 1 | awk -Fx 'NF>=2 {print $1, $2}'
+    )
 
-    if [[ -n "$width" && "$width" -gt 1920 ]]; then
-        printf 'UHD/4K detected (%dx%d): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
-        scale_filter="-vf scale=1920:trunc(ow/a/2)*2"
+    active_codec="$VIDEO_CODEC"
+    active_preset="$PRESET"
+    active_quality_opts="$QUALITY_OPTS"
+    local -a scale_opts=()
+
+    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]] && (( width >= 3840 || height >= 2160 )); then
+        printf 'UHD/4K detected (%sx%s): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
+        # Fallback to H.264 for maximum stability on 4K downscaling
+        active_codec="libx264"
+        active_preset="veryfast"
+        active_quality_opts="-crf 22"
+        scale_opts=(-vf "scale='min(1920,iw)':-2")
+    elif [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+        printf 'Detected source dimensions: %sx%s. Using selected/default encode profile.\n' "$width" "$height"
+    else
+        printf 'Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile.\n'
     fi
 
-    # Print progress message with blank lines
-    printf '\n\nProcessing file %s of %s\n\n\n' "$current" "$total"
-    
-    printf 'Transcoding %q using %s...\n' "$f" "$VIDEO_CODEC"
+    printf 'Transcoding %q using %s...\n' "$f" "$active_codec"
     
     # shellcheck disable=SC2086
     if ffmpeg -hide_banner -loglevel warning -stats \
             -i "$f" \
             -map "0:v:0?" -map "0:a?" \
-            $scale_filter \
-            -c:v "$VIDEO_CODEC" \
-            $QUALITY_OPTS \
-            -preset "$PRESET" \
+            "${scale_opts[@]}" \
+            -c:v "$active_codec" \
+            $active_quality_opts \
+            -preset "$active_preset" \
             -c:a copy \
             -map_metadata -1 \
             -movflags +faststart \

@@ -153,7 +153,8 @@ try {
                 # Fallback to H.264 for maximum stability on 4K downscaling if using libx265/hevc
                 $activeCodec = "libx264"
                 $activePreset = "veryfast"
-                $activeQualityOpts = @("-vf", "scale=1920:1080:force_original_aspect_ratio=decrease", "-crf", "22")
+                # Use min(1920,iw):-2 to ensure even height
+                $activeQualityOpts = @("-vf", "scale='min(1920,iw)':-2", "-crf", "22")
             }
             elseif (($parsedWidth -gt 0) -and ($parsedHeight -gt 0)) {
                 Write-Host "Detected source dimensions: ${parsedWidth}x${parsedHeight}. Using selected/default encode profile."
