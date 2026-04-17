@@ -1,41 +1,19 @@
-# HEVC/H.265 Video Transcoding Script
-# ===================================
-# This script transcodes MP4 video files to HEVC/H.265 format using ffmpeg.
-# It significantly reduces file size while maintaining quality using CRF 24.
-#
-# WHAT IT DOES:
-# - Renames files with spaces to use underscores
-# - Transcodes .mp4 files to HEVC (libx265 codec, or hardware accel if requested)
-# - Copies audio streams without re-encoding
-# - Strips metadata to avoid stream mismatch errors
-# - Deletes original files after successful transcoding
-# - Skips files that have already been processed
-#
-# USAGE:
-#   .\hevc-transcode.ps1              # Process current directory only (software)
-#   .\hevc-transcode.ps1 -Recurse     # Process recursively from current directory
-#   .\hevc-transcode.ps1 -Recurse -UseQuickSync   # Use Intel Quick Sync
-#   .\hevc-transcode.ps1 -Recurse -UseNVENC       # Use NVIDIA NVENC
-#   .\hevc-transcode.ps1 -Recurse -UseAMF         # Use AMD AMF
-#
-# OUTPUT:
-# - Creates files with "_HEVC.mp4" suffix (e.g., "video_HEVC.mp4")
-# - Temporary files use "_HEVC.tmp.mp4" during processing
-#
-# REQUIREMENTS:
-# - ffmpeg must be installed and in your PATH
-# - PowerShell 5.1 or later
+# HEVC/H.265 MKV Transcoding Script
+# =================================
+# This script transcodes MKV video files to HEVC/H.265 format using ffmpeg.
+# It targets smaller file sizes while keeping quality comparable to the source.
 
 param(
     [switch]$Recurse,
     [switch]$UseQuickSync,
     [switch]$UseNVENC,
-    [switch]$UseAMF
+    [switch]$UseAMF,
+    [ValidateRange(0, 2147483647)]
+    [int]$Threads = 0
 )
 
 $ErrorActionPreference = "Continue"
 
-# Determine video codec and quality settings based on hardware acceleration option
 $videoCodec = "libx265"
 $preset = "medium"
 $qualityOpts = @("-crf", "24")
@@ -56,15 +34,20 @@ elseif ($UseAMF) {
     $qualityOpts = @("-qp_i", "24", "-qp_p", "24", "-qp_b", "24")
 }
 
-$tempOutput = $null
+$threadOpts = @()
+$x265Opts = @()
+if ($Threads -gt 0) {
+    $threadOpts = @("-threads", "$Threads")
+    if ($videoCodec -eq "libx265") {
+        $x265Opts = @("-x265-params", "pools=$Threads")
+    }
+}
 
-# Determine recursion option for Get-ChildItem
+$tempOutput = $null
 $recurseOption = if ($Recurse) { @{ Recurse = $true } } else { @{} }
 
-# Helper function to validate file path
 function Test-ValidFilePath {
     param([string]$Path)
-    # Check for control characters or other dangerous patterns
     if ($Path -match '[\x00-\x1f]') {
         Write-Warning "Skipping file with control characters in name: $Path"
         return $false
@@ -73,14 +56,11 @@ function Test-ValidFilePath {
 }
 
 try {
-    # 1. Rename files: replace literal spaces with underscores
     Get-ChildItem -File @recurseOption | Where-Object { $_.Name -like "* *" } | ForEach-Object {
         $oldName = $_.Name
         $newName = $oldName -replace ' ', '_'
-
         if ($oldName -ne $newName) {
             $targetPath = Join-Path $_.DirectoryName $newName
-
             if (Test-Path -LiteralPath $targetPath) {
                 Write-Host "Skipping rename: '$oldName' -> '$newName' (target already exists)"
             }
@@ -90,100 +70,60 @@ try {
         }
     }
 
-    # 2. Collect eligible files in a single pass using List for efficiency
     $filesToProcess = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
-    Get-ChildItem -File @recurseOption | Where-Object { 
-        $_.Extension -ieq ".mp4" -and $_.Name -notlike "*_HEVC.mp4" 
+    Get-ChildItem -File @recurseOption | Where-Object {
+        $_.Extension -ieq ".mkv" -and $_.Name -notlike "*_HEVC.mkv"
     } | ForEach-Object {
         if (-not (Test-ValidFilePath -Path $_.FullName)) {
             return
         }
-        $output = Join-Path $_.DirectoryName ([System.IO.Path]::GetFileNameWithoutExtension($_.Name) + "_HEVC.mp4")
+        $output = Join-Path $_.DirectoryName ([System.IO.Path]::GetFileNameWithoutExtension($_.Name) + "_HEVC.mkv")
         if (-not (Test-Path -LiteralPath $output)) {
             $filesToProcess.Add($_)
         }
     }
-    
+
     $totalFiles = $filesToProcess.Count
-    
     if ($totalFiles -eq 0) {
-        Write-Host "No eligible MP4 files found to process."
+        Write-Host "No eligible MKV files found to process."
         exit 0
     }
-    
+
     $fileIndex = 0
-    
-    # 3. Process collected files
     foreach ($file in $filesToProcess) {
         try {
             $fileIndex++
-            
             $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
             $directory = $file.DirectoryName
-
-            $output = Join-Path $directory ($baseName + "_HEVC.mp4")
-            $tempOutput = Join-Path $directory ($baseName + "_HEVC.tmp.mp4")
+            $output = Join-Path $directory ($baseName + "_HEVC.mkv")
+            $tempOutput = Join-Path $directory ($baseName + "_HEVC.tmp.mkv")
 
             if (Test-Path -LiteralPath $tempOutput) {
                 Remove-Item -LiteralPath $tempOutput -Force
             }
 
-            # Print progress message with blank lines (batched for efficiency)
             Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
-            
-            # Detect source dimensions to decide whether to force the 4K-safe profile.
-            # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
-            # then downscale into a 1080p bounding box while preserving aspect ratio.
-            $detectedDimensions = & ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x -- $file.FullName 2>$null
-
-            $activeCodec = $videoCodec
-            $activePreset = $preset
-            $activeQualityOpts = $qualityOpts
-
-            $parsedWidth = 0
-            $parsedHeight = 0
-            $dimensionLine = ($detectedDimensions | Select-Object -First 1)
-            if ($dimensionLine -match '^\s*(\d+)x(\d+)\s*$') {
-                $parsedWidth = [int]$matches[1]
-                $parsedHeight = [int]$matches[2]
-            }
-
-            if (($parsedWidth -ge 3840) -or ($parsedHeight -ge 2160)) {
-                Write-Host "UHD/4K detected (${parsedWidth}x${parsedHeight}): forcing aspect-safe 1080p downscale profile for stability."
-                # Fallback to H.264 for maximum stability on 4K downscaling if using libx265/hevc
-                $activeCodec = "libx264"
-                $activePreset = "veryfast"
-                $activeQualityOpts = @("-vf", "scale=1920:1080:force_original_aspect_ratio=decrease", "-crf", "22")
-            }
-            elseif (($parsedWidth -gt 0) -and ($parsedHeight -gt 0)) {
-                Write-Host "Detected source dimensions: ${parsedWidth}x${parsedHeight}. Using selected/default encode profile."
-            }
-            else {
-                Write-Host "Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile."
-            }
-
-            Write-Host "Transcoding '$($file.FullName)' using $activeCodec..."
+            Write-Host "Transcoding '$($file.FullName)' using $videoCodec..."
 
             & ffmpeg -hide_banner -loglevel warning -stats `
                 -i $file.FullName `
-                -map 0:v:0? -map 0:a? `
-                -c:v $activeCodec `
-                @activeQualityOpts `
-                -preset $activePreset `
+                -map 0:v:0? -map 0:a? -map 0:s? `
+                -c:v $videoCodec `
+                @x265Opts `
+                @qualityOpts `
+                -preset $preset `
                 -c:a copy `
+                -c:s copy `
                 -map_metadata -1 `
-                -movflags +faststart `
+                @threadOpts `
                 -y `
-                $tempOutput
+                -- $tempOutput
 
-            # Print two blank lines after ffmpeg
             Write-Host "`n`n"
 
             if ($LASTEXITCODE -eq 0) {
                 if ((Test-Path -LiteralPath $tempOutput) -and ((Get-Item -LiteralPath $tempOutput).Length -gt 0)) {
-                    # Verify output file integrity before deleting source.
-                    # Suppress ffprobe stderr so problematic files are handled silently.
-                    $null = & ffprobe -v error -- $tempOutput 2>$null
+                    & ffprobe -v error $tempOutput *> $null
                     if ($LASTEXITCODE -eq 0) {
                         try {
                             Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop

@@ -2,11 +2,14 @@
 # H.264 Video Transcoding Script
 # ===============================
 # This script transcodes MP4 video files to H.264 format using ffmpeg.
-# It reduces file size while maintaining quality using CRF 24.
+# It reduces file size while maintaining quality using CRF 24 for standard
+# sources and automatically downscales 4K inputs to 1080p (CRF 22) for
+# improved stability.
 #
 # WHAT IT DOES:
 # - Renames files with spaces to use underscores
 # - Transcodes .mp4 files to H.264 (libx264 codec, or hardware accel if requested)
+# - Detects 4K/UltraHD sources via ffprobe and forces stable 1080p downscale settings
 # - Copies audio streams without re-encoding
 # - Strips metadata to avoid stream mismatch errors
 # - Deletes original files after successful transcoding
@@ -25,6 +28,7 @@
 #
 # REQUIREMENTS:
 # - ffmpeg must be installed and in your PATH
+# - ffprobe must be installed and in your PATH (used for resolution detection + validation)
 # - Bash 4.0 or later
 
 set -u
@@ -56,20 +60,20 @@ trap 'rm -f -- "$temp_output"; exit' INT TERM EXIT
 # Determine video codec and quality settings based on hardware acceleration option
 VIDEO_CODEC="libx264"
 PRESET="veryfast"
-QUALITY_OPTS="-crf 24"
+QUALITY_OPTS=(-crf 24)
 
 if [[ "$USE_QSV" == true ]]; then
     VIDEO_CODEC="h264_qsv"
     PRESET="fast"
-    QUALITY_OPTS="-global_quality 24"
+    QUALITY_OPTS=(-global_quality 24)
 elif [[ "$USE_NVENC" == true ]]; then
     VIDEO_CODEC="h264_nvenc"
     PRESET="p4"
-    QUALITY_OPTS="-rc vbr -cq 24"
+    QUALITY_OPTS=(-rc vbr -cq 24)
 elif [[ "$USE_AMF" == true ]]; then
     VIDEO_CODEC="h264_amf"
     PRESET="speed"
-    QUALITY_OPTS="-qp_i 24 -qp_p 24 -qp_b 24"
+    QUALITY_OPTS=(-qp_i 24 -qp_p 24 -qp_b 24)
 fi
 
 # Sanitize filename for safe use in shell
@@ -124,31 +128,42 @@ process_file() {
     rm -f -- "$temp_out"
     temp_output="$temp_out"
 
-    # Detect resolution for 4K downscaling
-    local resolution width height scale_filter
-    resolution=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$f" 2>/dev/null)
-    width=$(echo "$resolution" | cut -d'x' -f1)
-    height=$(echo "$resolution" | cut -d'x' -f2)
-    scale_filter=""
-
-    if [[ -n "$width" && "$width" -gt 1920 ]]; then
-        printf 'UHD/4K detected (%dx%d): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
-        scale_filter="-vf scale=1920:trunc(ow/a/2)*2"
-    fi
-
     # Print progress message with blank lines
     printf '\n\nProcessing file %s of %s\n\n\n' "$current" "$total"
     
-    printf 'Transcoding %q using %s...\n' "$f" "$VIDEO_CODEC"
+    # Detect source dimensions to decide whether to force the 4K-safe profile.
+    # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
+    # then downscale into a 1080p bounding box while preserving aspect ratio.
+    local width height active_codec active_preset
+    local -a active_quality_opts
+    read -r width height < <(
+        ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+            -of csv=p=0:s=x -- "$f" 2>/dev/null | head -n 1 | awk -Fx 'NF>=2 {print $1, $2}'
+    )
+
+    active_codec="$VIDEO_CODEC"
+    active_preset="$PRESET"
+    active_quality_opts=("${QUALITY_OPTS[@]}")
+
+    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]] && (( width >= 3840 || height >= 2160 )); then
+        printf 'UHD/4K detected (%sx%s): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
+        active_codec="libx264"
+        active_preset="veryfast"
+        active_quality_opts=(-vf "scale=1920:1080:force_original_aspect_ratio=decrease" -crf 22)
+    elif [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+        printf 'Detected source dimensions: %sx%s. Using selected/default encode profile.\n' "$width" "$height"
+    else
+        printf 'Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile.\n'
+    fi
+
+    printf 'Transcoding %q using %s...\n' "$f" "$active_codec"
     
-    # shellcheck disable=SC2086
     if ffmpeg -hide_banner -loglevel warning -stats \
             -i "$f" \
             -map "0:v:0?" -map "0:a?" \
-            $scale_filter \
-            -c:v "$VIDEO_CODEC" \
-            $QUALITY_OPTS \
-            -preset "$PRESET" \
+            -c:v "$active_codec" \
+            "${active_quality_opts[@]}" \
+            -preset "$active_preset" \
             -c:a copy \
             -map_metadata -1 \
             -movflags +faststart \
@@ -213,6 +228,8 @@ if [[ "$RECURSE" == true ]]; then
     # Collect eligible files in a single pass
     files_to_process=()
     while IFS= read -r -d '' f; do
+        local base_name=""
+        local output=""
         base_name=$(basename "$f")
         [[ "${base_name,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
@@ -241,6 +258,7 @@ else
     # Collect eligible files in a single pass
     files_to_process=()
     for f in *.mp4; do
+        local output=""
         [[ -f "$f" ]] || continue
         [[ "${f,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
