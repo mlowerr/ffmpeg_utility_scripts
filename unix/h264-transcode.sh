@@ -230,8 +230,8 @@ if [[ "$RECURSE" == true ]]; then
     # Collect eligible files in a single pass
     files_to_process=()
     while IFS= read -r -d '' f; do
-        local base_name=""
-        local output=""
+        base_name=""
+        output=""
         base_name=$(basename "$f")
         [[ "${base_name,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
@@ -260,7 +260,7 @@ else
     # Collect eligible files in a single pass
     files_to_process=()
     for f in *.mp4; do
-        local output=""
+        output=""
         [[ -f "$f" ]] || continue
         [[ "${f,,}" == *_redu.mp4 ]] && continue
         output="${f%.*}_REDU.mp4"
