@@ -10,6 +10,7 @@ A collection of cross-platform video transcoding scripts using FFmpeg. Supports 
 - **Batch processing**: Process single directory or recursively
 - **Safe operation**: Verifies output integrity before deleting source files
 - **Progress tracking**: Shows "Processing file X of Y" for batch operations
+- **Smart 4K downscaling**: Automatically downscales 4K+ video to aspect-safe 1080p
 - **Smart file handling**: Auto-renames files with spaces, skips already-processed files
 
 ## Repository Structure
@@ -125,9 +126,10 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 
 1. **File Preparation**: Renames files with spaces to use underscores
 2. **File Collection**: Scans for eligible `.mp4` files (skips already-transcoded files)
-3. **Transcoding**: Converts video using specified codec, copies audio without re-encoding
-4. **Verification**: Validates output file integrity with ffprobe
-5. **Cleanup**: Deletes source file only after successful verification
+3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling
+4. **Transcoding**: Converts video using specified codec, copies audio without re-encoding
+5. **Verification**: Validates output file integrity with ffprobe
+6. **Cleanup**: Deletes source file only after successful verification
 
 ## Output Files
 

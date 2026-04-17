@@ -124,6 +124,18 @@ process_file() {
     rm -f -- "$temp_out"
     temp_output="$temp_out"
 
+    # Detect resolution for 4K downscaling
+    local resolution width height scale_filter
+    resolution=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$f" 2>/dev/null)
+    width=$(echo "$resolution" | cut -d'x' -f1)
+    height=$(echo "$resolution" | cut -d'x' -f2)
+    scale_filter=""
+
+    if [[ -n "$width" && "$width" -gt 1920 ]]; then
+        printf 'UHD/4K detected (%dx%d): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
+        scale_filter="-vf scale=1920:trunc(ow/a/2)*2"
+    fi
+
     # Print progress message with blank lines
     printf '\n\nProcessing file %s of %s\n\n\n' "$current" "$total"
     
@@ -133,6 +145,7 @@ process_file() {
     if ffmpeg -hide_banner -loglevel warning -stats \
             -i "$f" \
             -map "0:v:0?" -map "0:a?" \
+            $scale_filter \
             -c:v "$VIDEO_CODEC" \
             $QUALITY_OPTS \
             -preset "$PRESET" \
@@ -140,7 +153,7 @@ process_file() {
             -map_metadata -1 \
             -movflags +faststart \
             -y \
-            -- "$temp_out"; then
+            "$temp_out"; then
         # Print two blank lines after ffmpeg
         printf '\n\n'
         
@@ -200,7 +213,6 @@ if [[ "$RECURSE" == true ]]; then
     # Collect eligible files in a single pass
     files_to_process=()
     while IFS= read -r -d '' f; do
-        local base_name output
         base_name=$(basename "$f")
         [[ "${base_name,,}" == *_hevc.mp4 ]] && continue
         output="${f%.*}_HEVC.mp4"
@@ -229,7 +241,6 @@ else
     # Collect eligible files in a single pass
     files_to_process=()
     for f in *.mp4; do
-        local output
         [[ -f "$f" ]] || continue
         [[ "${f,,}" == *_hevc.mp4 ]] && continue
         output="${f%.*}_HEVC.mp4"

@@ -128,6 +128,18 @@ try {
                 Remove-Item -LiteralPath $tempOutput -Force
             }
 
+            # Detect resolution for 4K downscaling
+            $resolution = & ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 $file.FullName 2>$null
+            $scaleFilter = @()
+            if ($resolution -match '(\d+)x(\d+)') {
+                $width = [int]$matches[1]
+                $height = [int]$matches[2]
+                if ($width -gt 1920) {
+                    Write-Host "UHD/4K detected ($width`x$height): forcing aspect-safe 1080p downscale profile for stability."
+                    $scaleFilter = @("-vf", "scale=1920:trunc(ow/a/2)*2")
+                }
+            }
+
             # Print progress message with blank lines (batched for efficiency)
             Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
             
@@ -136,6 +148,7 @@ try {
             & ffmpeg -hide_banner -loglevel warning -stats `
                 -i $file.FullName `
                 -map 0:v:0? -map 0:a? `
+                @scaleFilter `
                 -c:v $videoCodec `
                 @qualityOpts `
                 -preset $preset `
@@ -143,7 +156,7 @@ try {
                 -map_metadata -1 `
                 -movflags +faststart `
                 -y `
-                -- $tempOutput
+                $tempOutput
 
             # Print two blank lines after ffmpeg
             Write-Host "`n`n"
