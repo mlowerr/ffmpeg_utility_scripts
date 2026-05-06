@@ -2,17 +2,23 @@
 
 ## Project Overview
 
-Cross-platform video transcoding scripts that convert MP4 files to H.264 or HEVC/H.265 format with hardware acceleration support.
+Cross-platform FFmpeg utility scripts that convert video files to H.264 or HEVC/H.265 format with hardware acceleration support and convert FLAC/WAV audio files to 256k MP3.
 
 ### Directory Structure
 ```
 ffmpeg_utility_scripts/
+├── cross-platform/
+│   └── hevc-mkv-transcode.py # HEVC/H.265 MKV transcoding (Python)
 ├── unix/
+│   ├── flac-to-mp3.sh       # FLAC to 256k MP3 (Bash)
 │   ├── h264-transcode.sh    # H.264 transcoding (Bash)
-│   └── hevc-transcode.sh    # HEVC/H.265 transcoding (Bash)
+│   ├── hevc-transcode.sh    # HEVC/H.265 transcoding (Bash)
+│   └── wav-to-mp3.sh        # WAV to 256k MP3 (Bash)
 └── windows/
+    ├── flac-to-mp3.ps1      # FLAC to 256k MP3 (PowerShell)
     ├── h264-transcode.ps1   # H.264 transcoding (PowerShell)
-    └── hevc-transcode.ps1   # HEVC transcoding (PowerShell)
+    ├── hevc-transcode.ps1   # HEVC transcoding (PowerShell)
+    └── wav-to-mp3.ps1       # WAV to 256k MP3 (PowerShell)
 ```
 
 ## Critical Coding Standards
@@ -231,12 +237,17 @@ fi
 ```bash
 bash -n unix/h264-transcode.sh
 bash -n unix/hevc-transcode.sh
+bash -n unix/flac-to-mp3.sh
+bash -n unix/wav-to-mp3.sh
+python3 -m py_compile cross-platform/hevc-mkv-transcode.py
 ```
 
 ### ShellCheck
 ```bash
 shellcheck unix/h264-transcode.sh
 shellcheck unix/hevc-transcode.sh
+shellcheck unix/flac-to-mp3.sh
+shellcheck unix/wav-to-mp3.sh
 ```
 
 ### Test Scenarios
@@ -298,8 +309,9 @@ done
 ## Script Suffix Conventions
 
 - H.264 output: `_REDU.mp4`
-- HEVC output: `_HEVC.mp4`
-- Temp files: `._REDU.tmp.mp4` or `._HEVC.tmp.mp4`
+- HEVC output: `_HEVC.mp4` / `_HEVC.mkv`
+- Audio output: `.mp3` at 256 kbps
+- Temp files: `_REDU.tmp.mp4`, `_HEVC.tmp.mp4`, `_HEVC.tmp.mkv`, or `.tmp.mp3`
 
 ## Exit Codes
 

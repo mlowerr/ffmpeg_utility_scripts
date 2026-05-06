@@ -1,11 +1,12 @@
-# FFmpeg Video Transcoding Scripts
+# FFmpeg Utility Scripts
 
-A collection of cross-platform video transcoding scripts using FFmpeg. Supports both H.264 and HEVC/H.265 encoding with optional hardware acceleration.
+A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H.265 video encoding with optional hardware acceleration, plus FLAC/WAV audio conversion to 256 kbps MP3.
 
 ## Features
 
 - **Cross-platform**: Bash scripts for Linux/macOS, PowerShell scripts for Windows
 - **Codec support**: H.264 (AVC) and HEVC/H.265 encoding
+- **Audio conversion**: FLAC and WAV to 256 kbps MP3
 - **Hardware acceleration**: Intel Quick Sync, NVIDIA NVENC, AMD AMF
 - **Batch processing**: Process single directory or recursively
 - **Safe operation**: Verifies output integrity before deleting source files
@@ -17,21 +18,26 @@ A collection of cross-platform video transcoding scripts using FFmpeg. Supports 
 
 ```
 .
+├── cross-platform/
+│   └── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
 ├── unix/
-│   ├── h264-transcode.sh      # H.264 encoding for MP4 (Bash)
-│   ├── h264-avi-transcode.sh  # H.264 encoding for AVI (Bash)
-│   ├── h264-mov-transcode.sh  # H.264 encoding for MOV (Bash)
-│   ├── hevc-transcode.sh      # HEVC/H.265 encoding for MP4 (Bash)
-│   └── hevc-mkv-transcode.sh  # HEVC/H.265 encoding for MKV (Bash)
+│   ├── flac-to-mp3.sh             # FLAC to 256k MP3 (Bash)
+│   ├── h264-transcode.sh          # H.264 encoding for MP4 (Bash)
+│   ├── h264-avi-transcode.sh      # H.264 encoding for AVI (Bash)
+│   ├── h264-mov-transcode.sh      # H.264 encoding for MOV (Bash)
+│   ├── hevc-transcode.sh          # HEVC/H.265 encoding for MP4 (Bash)
+│   ├── hevc-mkv-transcode.sh      # HEVC/H.265 encoding for MKV (Bash)
+│   └── wav-to-mp3.sh              # WAV to 256k MP3 (Bash)
 ├── windows/
-│   ├── h264-transcode.ps1     # H.264 encoding for MP4 (PowerShell)
-│   ├── h264-avi-transcode.ps1 # H.264 encoding for AVI (PowerShell)
-│   ├── h264-mov-transcode.ps1 # H.264 encoding for MOV (PowerShell)
-│   ├── hevc-transcode.ps1     # HEVC/H.265 encoding for MP4 (PowerShell)
-│   └── hevc-mkv-transcode.ps1 # HEVC/H.265 encoding for MKV (PowerShell)
-├── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
-├── HARDWARE_ACCEL_GUIDE.md    # Hardware acceleration setup guide
-└── README.md                  # This file
+│   ├── flac-to-mp3.ps1            # FLAC to 256k MP3 (PowerShell)
+│   ├── h264-transcode.ps1         # H.264 encoding for MP4 (PowerShell)
+│   ├── h264-avi-transcode.ps1     # H.264 encoding for AVI (PowerShell)
+│   ├── h264-mov-transcode.ps1     # H.264 encoding for MOV (PowerShell)
+│   ├── hevc-transcode.ps1         # HEVC/H.265 encoding for MP4 (PowerShell)
+│   ├── hevc-mkv-transcode.ps1     # HEVC/H.265 encoding for MKV (PowerShell)
+│   └── wav-to-mp3.ps1             # WAV to 256k MP3 (PowerShell)
+├── HARDWARE_ACCEL_GUIDE.md        # Hardware acceleration setup guide
+└── README.md                      # This file
 ```
 
 ## Requirements
@@ -40,6 +46,7 @@ A collection of cross-platform video transcoding scripts using FFmpeg. Supports 
 - **Bash** 4.0+ (for Unix scripts)
 - **PowerShell** 5.1+ (for Windows scripts)
 - **ffprobe** (for output verification)
+- **Python** 3.9+ (for cross-platform Python scripts)
 
 ### Installing FFmpeg
 
@@ -99,8 +106,16 @@ Process supported video files in the current directory:
 .\windows\hevc-mkv-transcode.ps1 -Threads 8
 
 # Cross-platform Python - HEVC encoding (MKV input/output)
-python3 ./hevc-mkv-transcode.py
-python3 ./hevc-mkv-transcode.py --threads 8
+python3 ./cross-platform/hevc-mkv-transcode.py
+python3 ./cross-platform/hevc-mkv-transcode.py --threads 8
+
+# Linux/macOS - Audio conversion to 256k MP3
+./unix/flac-to-mp3.sh
+./unix/wav-to-mp3.sh
+
+# Windows - Audio conversion to 256k MP3
+.\windows\flac-to-mp3.ps1
+.\windows\wav-to-mp3.ps1
 ```
 
 ### Recursive Processing
@@ -115,6 +130,8 @@ Process supported video files from the current directory downward:
 ./unix/hevc-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r -t 8
+./unix/flac-to-mp3.sh -r
+./unix/wav-to-mp3.sh -r
 
 # Windows
 .\windows\h264-transcode.ps1 -Recurse
@@ -123,8 +140,10 @@ Process supported video files from the current directory downward:
 .\windows\hevc-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse -Threads 8
-python3 .\hevc-mkv-transcode.py --recurse
-python3 .\hevc-mkv-transcode.py --recurse --threads 8
+.\windows\flac-to-mp3.ps1 -Recurse
+.\windows\wav-to-mp3.ps1 -Recurse
+python3 ./cross-platform/hevc-mkv-transcode.py --recurse
+python3 ./cross-platform/hevc-mkv-transcode.py --recurse --threads 8
 ```
 
 ### Hardware Acceleration
@@ -159,7 +178,7 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 .\windows\h264-mov-transcode.ps1 -Recurse -UseNVENC
 .\windows\hevc-transcode.ps1 -UseNVENC
 .\windows\hevc-mkv-transcode.ps1 -UseNVENC
-python3 .\hevc-mkv-transcode.py --nvenc
+python3 .\cross-platform\hevc-mkv-transcode.py --nvenc
 ```
 
 See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instructions.
@@ -167,9 +186,9 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 ## How It Works
 
 1. **File Preparation**: Renames files with spaces to use underscores
-2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, or `.mkv` files depending on the script (skips already-transcoded files)
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files)
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
-4. **Transcoding**: Converts video using specified codec, copies audio (and MKV subtitles in the MKV workflow) without re-encoding
+4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
 5. **Verification**: Validates output file integrity with ffprobe
 6. **Cleanup**: Deletes source file only after successful verification
 
@@ -178,7 +197,8 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 - **H.264 (MP4/AVI/MOV workflows)**: Creates `*_REDU.mp4` files
 - **HEVC (MP4 workflow)**: Creates `*_HEVC.mp4` files
 - **HEVC (MKV workflow)**: Creates `*_HEVC.mkv` files
-- **Temporary**: Uses `*.tmp.mp4` or `*.tmp.mkv` during processing (auto-cleaned)
+- **Audio conversion**: Creates `*.mp3` files at 256 kbps for FLAC/WAV inputs
+- **Temporary**: Uses `*.tmp.mp4`, `*.tmp.mkv`, or `*.tmp.mp3` during processing (auto-cleaned)
 
 ## Safety Features
 
