@@ -61,6 +61,7 @@ elseif ($UseAMF) {
 }
 
 $tempOutput = $null
+$failedCount = 0
 
 # Determine recursion option for Get-ChildItem
 $recurseOption = if ($Recurse) { @{ Recurse = $true } } else { @{} }
@@ -199,11 +200,13 @@ try {
                             if (Test-Path -LiteralPath $tempOutput) {
                                 Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
                             }
+                            $failedCount++
                         }
                     }
                     else {
                         Write-Host "Error: Output file verification failed for '$($file.FullName)'. Keeping source."
                         Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                        $failedCount++
                     }
                 }
                 else {
@@ -211,6 +214,7 @@ try {
                     if (Test-Path -LiteralPath $tempOutput) {
                         Remove-Item -LiteralPath $tempOutput -Force
                     }
+                    $failedCount++
                 }
             }
             else {
@@ -218,6 +222,7 @@ try {
                 if (Test-Path -LiteralPath $tempOutput) {
                     Remove-Item -LiteralPath $tempOutput -Force
                 }
+                $failedCount++
             }
 
             $tempOutput = $null
@@ -227,6 +232,7 @@ try {
             if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
                 Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
             }
+            $failedCount++
             $tempOutput = $null
             continue
         }
@@ -237,3 +243,10 @@ finally {
         Remove-Item -LiteralPath $tempOutput -Force
     }
 }
+
+# Return non-zero if any files failed so callers can detect unsuccessful runs.
+if ($failedCount -gt 0) {
+    exit 1
+}
+
+exit 0
