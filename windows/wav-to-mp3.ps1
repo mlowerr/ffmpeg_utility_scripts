@@ -11,6 +11,66 @@ $ErrorActionPreference = "Continue"
 $failedCount = 0
 $tempOutput = $null
 
+$processingLock = $null
+
+function New-ProcessingLock {
+    param(
+        [string]$LockPath,
+        [string]$SourcePath
+    )
+
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            $lockStream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            $lockText = "PID=$PID`nSource=$SourcePath`nStarted=$(Get-Date -Format o)`n"
+            $lockBytes = [System.Text.Encoding]::UTF8.GetBytes($lockText)
+            $lockStream.Write($lockBytes, 0, $lockBytes.Length)
+            $lockStream.Flush()
+            return [pscustomobject]@{ Path = $LockPath; Stream = $lockStream }
+        }
+        catch [System.IO.IOException] {
+            $existingStream = $null
+            try {
+                if (Test-Path -LiteralPath $LockPath) {
+                    $existingStream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+                    $existingStream.Dispose()
+                    Remove-Item -LiteralPath $LockPath -Force -ErrorAction Stop
+                    continue
+                }
+            }
+            catch {
+                if ($existingStream) { $existingStream.Dispose() }
+                Write-Host "Skipping '$SourcePath' because another script instance is already processing it."
+                return $null
+            }
+        }
+        catch {
+            Write-Warning "Unable to create processing lock for '$SourcePath': $_"
+            return $null
+        }
+    }
+
+    Write-Host "Skipping '$SourcePath' because another script instance is already processing it."
+    return $null
+}
+
+function Remove-ProcessingLock {
+    param([psobject]$Lock)
+
+    if ($null -eq $Lock) {
+        return
+    }
+
+    if ($Lock.Stream) {
+        $Lock.Stream.Dispose()
+    }
+
+    if ($Lock.Path -and (Test-Path -LiteralPath $Lock.Path)) {
+        Remove-Item -LiteralPath $Lock.Path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+
 function Rename-FilesWithSpaces {
     param([System.IO.DirectoryInfo]$Directory)
 
@@ -57,9 +117,16 @@ function Convert-AudioFile {
     $output = Join-Path $File.DirectoryName ($baseName + ".mp3")
     $script:tempOutput = Join-Path $File.DirectoryName ($baseName + ".tmp.mp3")
 
+    $script:processingLock = New-ProcessingLock -LockPath ($File.FullName + ".ffmpeg_utility.lock") -SourcePath $File.FullName
+    if (-not $script:processingLock) {
+        $script:tempOutput = $null
+        return
+    }
+
     if (Test-Path -LiteralPath $script:tempOutput) {
         Remove-Item -LiteralPath $script:tempOutput -Force
     }
+
 
     Write-Host "`n`nProcessing file $Current of $Total`n"
     Write-Host "Converting '$($File.FullName)' to 256k MP3..."
@@ -81,6 +148,8 @@ function Convert-AudioFile {
         Write-Host "Error: ffmpeg failed on '$($File.FullName)'. Keeping source."
         if (Test-Path -LiteralPath $script:tempOutput) { Remove-Item -LiteralPath $script:tempOutput -Force }
         $script:failedCount++
+        Remove-ProcessingLock -Lock $script:processingLock
+        $script:processingLock = $null
         $script:tempOutput = $null
         return
     }
@@ -89,6 +158,8 @@ function Convert-AudioFile {
         Write-Host "Error: Temporary output '$script:tempOutput' is empty. Keeping source."
         if (Test-Path -LiteralPath $script:tempOutput) { Remove-Item -LiteralPath $script:tempOutput -Force }
         $script:failedCount++
+        Remove-ProcessingLock -Lock $script:processingLock
+        $script:processingLock = $null
         $script:tempOutput = $null
         return
     }
@@ -98,6 +169,8 @@ function Convert-AudioFile {
         Write-Host "Error: Output verification failed for '$($File.FullName)'. Keeping source."
         Remove-Item -LiteralPath $script:tempOutput -Force -ErrorAction SilentlyContinue
         $script:failedCount++
+        Remove-ProcessingLock -Lock $script:processingLock
+        $script:processingLock = $null
         $script:tempOutput = $null
         return
     }
@@ -108,6 +181,8 @@ function Convert-AudioFile {
         Write-Host "Error: No audio stream found in output for '$($File.FullName)'. Keeping source."
         Remove-Item -LiteralPath $script:tempOutput -Force -ErrorAction SilentlyContinue
         $script:failedCount++
+        Remove-ProcessingLock -Lock $script:processingLock
+        $script:processingLock = $null
         $script:tempOutput = $null
         return
     }
@@ -123,6 +198,8 @@ function Convert-AudioFile {
         $script:failedCount++
     }
 
+    Remove-ProcessingLock -Lock $script:processingLock
+    $script:processingLock = $null
     $script:tempOutput = $null
 }
 
@@ -157,6 +234,7 @@ try {
     }
 }
 finally {
+    Remove-ProcessingLock -Lock $processingLock
     if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
         Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
     }
