@@ -13,7 +13,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 - **Progress tracking**: Shows "Processing file X of Y" for batch operations
 - **Smart 4K downscaling**: Automatically downscales 4K+ video to aspect-safe 1080p
 - **Smart file handling**: Auto-renames files with spaces, skips already-processed files
-- **File type reporting**: Counts files by extension for a target directory with optional recursion
+- **File type reporting**: Counts files by extension, lists matching full file paths, and generates per-folder reports
 
 ## Repository Structure
 
@@ -21,6 +21,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 .
 ├── cross-platform/
 │   ├── file-type-report.py        # Count files by file type (Python, cross-platform)
+│   ├── files-by-extension.py      # List full paths matching an extension (Python, cross-platform)
+│   ├── recursive-file-type-report.py # Per-folder type reports (Python, cross-platform)
 │   └── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
 ├── unix/
 │   ├── flac-to-mp3.sh             # FLAC to 256k MP3 (Bash)
@@ -111,8 +113,10 @@ Process supported video files in the current directory:
 python3 ./cross-platform/hevc-mkv-transcode.py
 python3 ./cross-platform/hevc-mkv-transcode.py --threads 8
 
-# Cross-platform Python - File type report
+# Cross-platform Python - File type tools
 python3 ./cross-platform/file-type-report.py /path/to/media
+python3 ./cross-platform/files-by-extension.py /path/to/media mp4
+python3 ./cross-platform/recursive-file-type-report.py /path/to/media
 
 # Linux/macOS - Audio conversion to 256k MP3
 ./unix/flac-to-mp3.sh
@@ -150,6 +154,7 @@ Process supported video files from the current directory downward:
 python3 ./cross-platform/hevc-mkv-transcode.py --recurse
 python3 ./cross-platform/hevc-mkv-transcode.py --recurse --threads 8
 python3 ./cross-platform/file-type-report.py --recursive /path/to/media
+python3 ./cross-platform/files-by-extension.py --recursive /path/to/media .mp4
 ```
 
 ### Hardware Acceleration
@@ -192,7 +197,7 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 ## How It Works
 
 1. **File Preparation**: Renames files with spaces to use underscores
-2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), or scans all regular files when generating file type reports
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, or lists full paths for a requested extension
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
 4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
 5. **Verification**: Validates output file integrity with ffprobe
