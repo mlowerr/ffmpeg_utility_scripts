@@ -61,6 +61,66 @@ elseif ($UseAMF) {
 }
 
 $tempOutput = $null
+
+$processingLock = $null
+
+function New-ProcessingLock {
+    param(
+        [string]$LockPath,
+        [string]$SourcePath
+    )
+
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            $lockStream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            $lockText = "PID=$PID`nSource=$SourcePath`nStarted=$(Get-Date -Format o)`n"
+            $lockBytes = [System.Text.Encoding]::UTF8.GetBytes($lockText)
+            $lockStream.Write($lockBytes, 0, $lockBytes.Length)
+            $lockStream.Flush()
+            return [pscustomobject]@{ Path = $LockPath; Stream = $lockStream }
+        }
+        catch [System.IO.IOException] {
+            $existingStream = $null
+            try {
+                if (Test-Path -LiteralPath $LockPath) {
+                    $existingStream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+                    $existingStream.Dispose()
+                    Remove-Item -LiteralPath $LockPath -Force -ErrorAction Stop
+                    continue
+                }
+            }
+            catch {
+                if ($existingStream) { $existingStream.Dispose() }
+                Write-Host "Skipping '$SourcePath' because another script instance is already processing it."
+                return $null
+            }
+        }
+        catch {
+            Write-Warning "Unable to create processing lock for '$SourcePath': $_"
+            return $null
+        }
+    }
+
+    Write-Host "Skipping '$SourcePath' because another script instance is already processing it."
+    return $null
+}
+
+function Remove-ProcessingLock {
+    param([psobject]$Lock)
+
+    if ($null -eq $Lock) {
+        return
+    }
+
+    if ($Lock.Stream) {
+        $Lock.Stream.Dispose()
+    }
+
+    if ($Lock.Path -and (Test-Path -LiteralPath $Lock.Path)) {
+        Remove-Item -LiteralPath $Lock.Path -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $failedCount = 0
 
 # Determine recursion option for Get-ChildItem
@@ -129,9 +189,16 @@ try {
             $output = Join-Path $directory ($baseName + "_REDU.mp4")
             $tempOutput = Join-Path $directory ($baseName + "_REDU.tmp.mp4")
 
+            $processingLock = New-ProcessingLock -LockPath ($file.FullName + ".ffmpeg_utility.lock") -SourcePath $file.FullName
+            if (-not $processingLock) {
+                $tempOutput = $null
+                continue
+            }
+
             if (Test-Path -LiteralPath $tempOutput) {
                 Remove-Item -LiteralPath $tempOutput -Force
             }
+
 
             # Print progress message with blank lines (batched for efficiency)
             Write-Host "`n`nProcessing file $fileIndex of $totalFiles`n`n"
@@ -225,10 +292,14 @@ try {
                 $failedCount++
             }
 
+            Remove-ProcessingLock -Lock $processingLock
+            $processingLock = $null
             $tempOutput = $null
         }
         catch {
             Write-Warning "Unexpected error processing '$($file.FullName)': $_"
+            Remove-ProcessingLock -Lock $processingLock
+            $processingLock = $null
             if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
                 Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
             }
@@ -239,6 +310,7 @@ try {
     }
 }
 finally {
+    Remove-ProcessingLock -Lock $processingLock
     if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
         Remove-Item -LiteralPath $tempOutput -Force
     }
