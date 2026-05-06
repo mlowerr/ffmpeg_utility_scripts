@@ -1,0 +1,288 @@
+#!/bin/bash
+# H.264 Video Transcoding Script
+# ===============================
+# This script transcodes MOV video files to H.264 format using ffmpeg.
+# It reduces file size while maintaining quality using CRF 24 for standard
+# sources and automatically downscales 4K inputs to 1080p (CRF 22) for
+# improved stability.
+#
+# WHAT IT DOES:
+# - Renames files with spaces to use underscores
+# - Transcodes .mov files to H.264 (libx264 codec, or hardware accel if requested)
+# - Detects 4K/UltraHD sources via ffprobe and forces stable 1080p downscale settings
+# - Copies audio streams without re-encoding
+# - Strips metadata to avoid stream mismatch errors
+# - Deletes original files after successful transcoding
+# - Skips files that have already been processed
+#
+# USAGE:
+#   ./h264-mov-transcode.sh           # Process current directory only (software encoding)
+#   ./h264-mov-transcode.sh -r        # Process recursively from current directory
+#   ./h264-mov-transcode.sh -r -q     # Use Intel Quick Sync hardware acceleration
+#   ./h264-mov-transcode.sh -r -n     # Use NVIDIA NVENC hardware acceleration
+#   ./h264-mov-transcode.sh -r -a     # Use AMD AMF hardware acceleration
+#
+# OUTPUT:
+# - Creates files with "_REDU.mp4" suffix (e.g., "video_REDU.mp4")
+# - Temporary files use "_REDU.tmp.mp4" during processing
+#
+# REQUIREMENTS:
+# - ffmpeg must be installed and in your PATH
+# - ffprobe must be installed and in your PATH (used for resolution detection + validation)
+# - Bash 4.0 or later
+
+set -u
+
+# Track processing failures for exit code
+FAILED_COUNT=0
+
+# Parse arguments
+RECURSE=false
+USE_QSV=false
+USE_NVENC=false
+USE_AMF=false
+
+while getopts "rqna" opt; do
+    case $opt in
+        r) RECURSE=true ;;
+        q) USE_QSV=true ;;
+        n) USE_NVENC=true ;;
+        a) USE_AMF=true ;;
+        *) echo "Usage: $0 [-r] [-q|-n|-a]"; exit 1 ;;
+    esac
+done
+
+shopt -s nullglob nocaseglob
+
+temp_output=""
+trap 'rm -f -- "$temp_output"; exit' INT TERM EXIT
+
+# Determine video codec and quality settings based on hardware acceleration option
+VIDEO_CODEC="libx264"
+PRESET="veryfast"
+QUALITY_OPTS=(-crf 24)
+
+if [[ "$USE_QSV" == true ]]; then
+    VIDEO_CODEC="h264_qsv"
+    PRESET="fast"
+    QUALITY_OPTS=(-global_quality 24)
+elif [[ "$USE_NVENC" == true ]]; then
+    VIDEO_CODEC="h264_nvenc"
+    PRESET="p4"
+    QUALITY_OPTS=(-rc vbr -cq 24)
+elif [[ "$USE_AMF" == true ]]; then
+    VIDEO_CODEC="h264_amf"
+    PRESET="speed"
+    QUALITY_OPTS=(-qp_i 24 -qp_p 24 -qp_b 24)
+fi
+
+# Sanitize filename for safe use in shell
+sanitize_filename() {
+    printf '%q' "$1"
+}
+
+# Function to rename files (replace spaces with underscores)
+rename_files() {
+    local dir="$1"
+    for f in "$dir"/*" "*; do
+        [[ -f "$f" ]] || continue
+
+        local filename new_filename new_name
+        filename=$(basename "$f")
+        new_filename="${filename// /_}"
+        new_name="$dir/$new_filename"
+
+        # Skip if no change needed
+        [[ "$f" == "$new_name" ]] && continue
+
+        # Use mv -n to avoid race condition (fails if target exists)
+        if ! mv -n -v -- "$f" "$new_name" 2>/dev/null; then
+            echo "Warning: Failed to rename '$f' -> '$new_name' (target exists or error)" >&2
+            continue
+        fi
+    done
+}
+
+# Function to process a single file
+# Arguments: $1 = file path, $2 = current index, $3 = total count
+process_file() {
+    local f="$1"
+    local current="$2"
+    local total="$3"
+    local dir
+    dir=$(dirname "$f")
+    local base_name
+    # Strip extension case-insensitively (.mov, .MOV, .Mov, etc.)
+    base_name=$(basename "$f")
+    base_name="${base_name%.[Mm][Oo][Vv]}"
+
+    local output="$dir/${base_name}_REDU.mp4"
+    local temp_out="$dir/${base_name}_REDU.tmp.mp4"
+
+    # Validate file path doesn't contain dangerous characters
+    if [[ "$f" == *$'\n'* ]]; then
+        echo "Warning: Skipping file with newline in name: $(sanitize_filename "$f")"
+        return
+    fi
+
+    rm -f -- "$temp_out"
+    temp_output="$temp_out"
+
+    # Print progress message with blank lines
+    printf '\n\nProcessing file %s of %s\n\n\n' "$current" "$total"
+    
+    # Detect source dimensions to decide whether to force the 4K-safe profile.
+    # Only apply fallback to true UHD/4K-class sources (>=3840 width OR >=2160 height),
+    # then downscale into a 1080p bounding box while preserving aspect ratio.
+    local width height active_codec active_preset
+    local -a active_quality_opts
+    read -r width height < <(
+        ffprobe -v error -select_streams v:0 -show_entries stream=width,height \
+            -of csv=p=0:s=x -- "$f" 2>/dev/null | head -n 1 | awk -Fx 'NF>=2 {print $1, $2}'
+    )
+
+    active_codec="$VIDEO_CODEC"
+    active_preset="$PRESET"
+    active_quality_opts=("${QUALITY_OPTS[@]}")
+
+    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]] && (( width >= 3840 || height >= 2160 )); then
+        printf 'UHD/4K detected (%sx%s): forcing aspect-safe 1080p downscale profile for stability.\n' "$width" "$height"
+        active_codec="libx264"
+        active_preset="veryfast"
+        # Force even height (-2) and ensure we don't accidentally upscale a small source 
+        # that somehow triggered the branch (though condition should prevent that).
+        active_quality_opts=(-vf "scale='min(1920,iw)':-2" -crf 22)
+    elif [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+        printf 'Detected source dimensions: %sx%s. Using selected/default encode profile.\n' "$width" "$height"
+    else
+        printf 'Warning: Could not determine source dimensions via ffprobe. Using selected/default encode profile.\n'
+    fi
+
+    printf 'Transcoding %q using %s...\n' "$f" "$active_codec"
+    
+    if ffmpeg -hide_banner -loglevel warning -stats \
+            -i "$f" \
+            -map "0:v:0?" -map "0:a?" \
+            -c:v "$active_codec" \
+            "${active_quality_opts[@]}" \
+            -preset "$active_preset" \
+            -c:a copy \
+            -map_metadata -1 \
+            -movflags +faststart \
+            -y \
+            "$temp_out"; then
+        # Print two blank lines after ffmpeg
+        printf '\n\n'
+        
+        if [[ -s "$temp_out" ]]; then
+            # Verify output file integrity before deleting source
+            if ffprobe -v error "$temp_out" >/dev/null 2>&1; then
+                # Validate audio stream count wasn't dropped due to incompatible codec
+                local input_audio_streams output_audio_streams
+                input_audio_streams=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$f" 2>/dev/null | wc -l)
+                output_audio_streams=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$temp_out" 2>/dev/null | wc -l)
+                
+                if [[ "$input_audio_streams" -gt 0 && "$output_audio_streams" -lt "$input_audio_streams" ]]; then
+                    printf 'Error: Audio stream count mismatch for %q (%d input, %d output). Incompatible codec? Keeping source.\n' "$f" "$input_audio_streams" "$output_audio_streams" >&2
+                    rm -f -- "$temp_out"
+                    ((FAILED_COUNT++))
+                else
+                    if mv -- "$temp_out" "$output"; then
+                        if rm -- "$f"; then
+                            printf 'Successfully transcoded %q to %q. Source deleted.\n' "$f" "$output"
+                        else
+                            printf 'Warning: Transcoded %q but failed to remove source.\n' "$f" >&2
+                            ((FAILED_COUNT++))
+                        fi
+                    else
+                        printf 'Error: Failed to move temp file to output for %q.\n' "$f" >&2
+                        rm -f -- "$temp_out"
+                        ((FAILED_COUNT++))
+                    fi
+                fi
+            else
+                printf 'Error: Output file verification failed for %q. Keeping source.\n' "$f" >&2
+                rm -f -- "$temp_out"
+                ((FAILED_COUNT++))
+            fi
+        else
+            printf 'Error: Temporary output %q is empty. Keeping source %q.\n' "$temp_out" "$f" >&2
+            rm -f -- "$temp_out"
+            ((FAILED_COUNT++))
+        fi
+    else
+        # Print two blank lines after ffmpeg
+        printf '\n\n'
+        printf 'Error: ffmpeg failed on %q. Keeping source.\n' "$f" >&2
+        rm -f -- "$temp_out"
+        ((FAILED_COUNT++))
+    fi
+    temp_output=""
+}
+
+# Main execution
+if [[ "$RECURSE" == true ]]; then
+    # Rename files recursively first
+    while IFS= read -r -d '' dir; do
+        rename_files "$dir"
+    done < <(find . -type d -print0)
+
+    # Collect eligible files in a single pass
+    files_to_process=()
+    while IFS= read -r -d '' f; do
+        base_name=""
+        output=""
+        base_name=$(basename "$f")
+        [[ "${base_name,,}" == *_redu.mov ]] && continue
+        output="${f%.*}_REDU.mp4"
+        [[ -e "$output" ]] && continue
+        files_to_process+=("$f")
+    done < <(find . -type f -iname "*.mov" -print0)
+
+    total_files=${#files_to_process[@]}
+    
+    if [[ $total_files -eq 0 ]]; then
+        echo "No eligible MOV files found to process."
+        exit 0
+    fi
+    
+    current_index=0
+
+    # Process collected files
+    for f in "${files_to_process[@]}"; do
+        ((current_index++))
+        process_file "$f" "$current_index" "$total_files"
+    done
+else
+    # Non-recursive mode (current directory only)
+    rename_files "."
+
+    # Collect eligible files in a single pass
+    files_to_process=()
+    for f in *.mov; do
+        output=""
+        [[ -f "$f" ]] || continue
+        [[ "${f,,}" == *_redu.mov ]] && continue
+        output="${f%.*}_REDU.mp4"
+        [[ -e "$output" ]] && continue
+        files_to_process+=("$f")
+    done
+
+    total_files=${#files_to_process[@]}
+    
+    if [[ $total_files -eq 0 ]]; then
+        echo "No eligible MOV files found to process."
+        exit 0
+    fi
+    
+    current_index=0
+
+    # Process collected files
+    for f in "${files_to_process[@]}"; do
+        ((current_index++))
+        process_file "$f" "$current_index" "$total_files"
+    done
+fi
+
+# Exit with non-zero status if any files failed processing
+exit $(( FAILED_COUNT > 0 ? 1 : 0 ))
