@@ -18,11 +18,15 @@ A collection of cross-platform video transcoding scripts using FFmpeg. Supports 
 ```
 .
 ├── unix/
-│   ├── h264-transcode.sh      # H.264 encoding (Bash)
+│   ├── h264-transcode.sh      # H.264 encoding for MP4 (Bash)
+│   ├── h264-avi-transcode.sh  # H.264 encoding for AVI (Bash)
+│   ├── h264-mov-transcode.sh  # H.264 encoding for MOV (Bash)
 │   ├── hevc-transcode.sh      # HEVC/H.265 encoding for MP4 (Bash)
 │   └── hevc-mkv-transcode.sh  # HEVC/H.265 encoding for MKV (Bash)
 ├── windows/
-│   ├── h264-transcode.ps1     # H.264 encoding (PowerShell)
+│   ├── h264-transcode.ps1     # H.264 encoding for MP4 (PowerShell)
+│   ├── h264-avi-transcode.ps1 # H.264 encoding for AVI (PowerShell)
+│   ├── h264-mov-transcode.ps1 # H.264 encoding for MOV (PowerShell)
 │   ├── hevc-transcode.ps1     # HEVC/H.265 encoding for MP4 (PowerShell)
 │   └── hevc-mkv-transcode.ps1 # HEVC/H.265 encoding for MKV (PowerShell)
 ├── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
@@ -67,17 +71,21 @@ sudo pacman -S ffmpeg
 
 ### Basic Usage
 
-Process all `.mp4` files in the current directory:
+Process supported video files in the current directory:
 
 ```bash
 # Linux/macOS - H.264 encoding
-./unix/h264-transcode.sh
+./unix/h264-transcode.sh      # MP4 input
+./unix/h264-avi-transcode.sh  # AVI input
+./unix/h264-mov-transcode.sh  # MOV input
 
 # Linux/macOS - HEVC encoding
 ./unix/hevc-transcode.sh
 
 # Windows - H.264 encoding (PowerShell)
-.\windows\h264-transcode.ps1
+.\windows\h264-transcode.ps1      # MP4 input
+.\windows\h264-avi-transcode.ps1  # AVI input
+.\windows\h264-mov-transcode.ps1  # MOV input
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\hevc-transcode.ps1
@@ -97,17 +105,21 @@ python3 ./hevc-mkv-transcode.py --threads 8
 
 ### Recursive Processing
 
-Process all `.mp4` files from the current directory downward:
+Process supported video files from the current directory downward:
 
 ```bash
 # Linux/macOS
 ./unix/h264-transcode.sh -r
+./unix/h264-avi-transcode.sh -r
+./unix/h264-mov-transcode.sh -r
 ./unix/hevc-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r -t 8
 
 # Windows
 .\windows\h264-transcode.ps1 -Recurse
+.\windows\h264-avi-transcode.ps1 -Recurse
+.\windows\h264-mov-transcode.ps1 -Recurse
 .\windows\hevc-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse -Threads 8
@@ -130,15 +142,21 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 ```bash
 # Linux/macOS with Intel Quick Sync
 ./unix/h264-transcode.sh -r -q
+./unix/h264-avi-transcode.sh -r -q
+./unix/h264-mov-transcode.sh -r -q
 ./unix/hevc-transcode.sh -q
 ./unix/hevc-mkv-transcode.sh -q
 
 # Linux/macOS with NVIDIA GPU
 ./unix/h264-transcode.sh -r -n
+./unix/h264-avi-transcode.sh -r -n
+./unix/h264-mov-transcode.sh -r -n
 ./unix/hevc-transcode.sh -n
 
 # Windows with NVIDIA GPU
 .\windows\h264-transcode.ps1 -Recurse -UseNVENC
+.\windows\h264-avi-transcode.ps1 -Recurse -UseNVENC
+.\windows\h264-mov-transcode.ps1 -Recurse -UseNVENC
 .\windows\hevc-transcode.ps1 -UseNVENC
 .\windows\hevc-mkv-transcode.ps1 -UseNVENC
 python3 .\hevc-mkv-transcode.py --nvenc
@@ -149,22 +167,15 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 ## How It Works
 
 1. **File Preparation**: Renames files with spaces to use underscores
-<<<<<<< HEAD
-2. **File Collection**: Scans for eligible `.mp4` files (skips already-transcoded files)
-3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling
-4. **Transcoding**: Converts video using specified codec, copies audio without re-encoding
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, or `.mkv` files depending on the script (skips already-transcoded files)
+3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
+4. **Transcoding**: Converts video using specified codec, copies audio (and MKV subtitles in the MKV workflow) without re-encoding
 5. **Verification**: Validates output file integrity with ffprobe
 6. **Cleanup**: Deletes source file only after successful verification
-=======
-2. **File Collection**: Scans for eligible `.mp4`/`.mkv` files (skips already-transcoded files)
-3. **Transcoding**: Converts video using specified codec, copies audio (and MKV subtitles) without re-encoding
-4. **Verification**: Validates output file integrity with ffprobe
-5. **Cleanup**: Deletes source file only after successful verification
->>>>>>> fix-error-handling
 
 ## Output Files
 
-- **H.264**: Creates `*_REDU.mp4` files
+- **H.264 (MP4/AVI/MOV workflows)**: Creates `*_REDU.mp4` files
 - **HEVC (MP4 workflow)**: Creates `*_HEVC.mp4` files
 - **HEVC (MKV workflow)**: Creates `*_HEVC.mkv` files
 - **Temporary**: Uses `*.tmp.mp4` or `*.tmp.mkv` during processing (auto-cleaned)
@@ -190,9 +201,9 @@ For MKV HEVC scripts, thread limits are available as `-t <N>` (Unix), `-Threads 
 
 ## Troubleshooting
 
-### "No eligible MP4 files found to process"
-- The script found no `.mp4` files that haven't already been processed
-- Check that your files have the `.mp4` extension
+### "No eligible MP4/AVI/MOV files found to process"
+- The selected script found no matching input files that have not already been processed
+- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, or `.mov`
 - Check that you don't already have `*_REDU.mp4`, `*_HEVC.mp4`, or `*_HEVC.mkv` versions
 
 ### "ffmpeg failed" or "Output file verification failed"
