@@ -55,7 +55,20 @@ done
 shopt -s nullglob nocaseglob
 
 temp_output=""
-trap 'rm -f -- "$temp_output"; exit' INT TERM EXIT
+cleanup_temp_output() {
+    rm -f -- "$temp_output"
+}
+
+handle_interrupt() {
+    local exit_status="$1"
+    cleanup_temp_output
+    trap - INT TERM EXIT
+    exit "$exit_status"
+}
+
+trap cleanup_temp_output EXIT
+trap 'handle_interrupt 130' INT
+trap 'handle_interrupt 143' TERM
 
 # Determine video codec and quality settings based on hardware acceleration option
 VIDEO_CODEC="libx264"
