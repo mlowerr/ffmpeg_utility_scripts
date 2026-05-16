@@ -29,6 +29,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── h264-transcode.sh          # H.264 encoding for MP4 (Bash)
 │   ├── h264-avi-transcode.sh      # H.264 encoding for AVI (Bash)
 │   ├── h264-mov-transcode.sh      # H.264 encoding for MOV (Bash)
+│   ├── transcode_all.sh            # Run AVI, MOV, then MP4 H.264 workflows (Bash)
 │   ├── hevc-transcode.sh          # HEVC/H.265 encoding for MP4 (Bash)
 │   ├── hevc-mkv-transcode.sh      # HEVC/H.265 encoding for MKV (Bash)
 │   └── wav-to-mp3.sh              # WAV to 256k MP3 (Bash)
@@ -37,6 +38,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── h264-transcode.ps1         # H.264 encoding for MP4 (PowerShell)
 │   ├── h264-avi-transcode.ps1     # H.264 encoding for AVI (PowerShell)
 │   ├── h264-mov-transcode.ps1     # H.264 encoding for MOV (PowerShell)
+│   ├── transcode_all.ps1           # Run AVI, MOV, then MP4 H.264 workflows (PowerShell)
 │   ├── hevc-transcode.ps1         # HEVC/H.265 encoding for MP4 (PowerShell)
 │   ├── hevc-mkv-transcode.ps1     # HEVC/H.265 encoding for MKV (PowerShell)
 │   └── wav-to-mp3.ps1             # WAV to 256k MP3 (PowerShell)
@@ -89,6 +91,7 @@ Process supported video files in the current directory:
 ./unix/h264-transcode.sh      # MP4 input
 ./unix/h264-avi-transcode.sh  # AVI input
 ./unix/h264-mov-transcode.sh  # MOV input
+./unix/transcode_all.sh        # AVI, MOV, then MP4 inputs
 
 # Linux/macOS - HEVC encoding
 ./unix/hevc-transcode.sh
@@ -97,6 +100,7 @@ Process supported video files in the current directory:
 .\windows\h264-transcode.ps1      # MP4 input
 .\windows\h264-avi-transcode.ps1  # AVI input
 .\windows\h264-mov-transcode.ps1  # MOV input
+.\windows\transcode_all.ps1        # AVI, MOV, then MP4 inputs
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\hevc-transcode.ps1
@@ -136,6 +140,7 @@ Process supported video files from the current directory downward:
 ./unix/h264-transcode.sh -r
 ./unix/h264-avi-transcode.sh -r
 ./unix/h264-mov-transcode.sh -r
+./unix/transcode_all.sh -r
 ./unix/hevc-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r -t 8
@@ -146,6 +151,7 @@ Process supported video files from the current directory downward:
 .\windows\h264-transcode.ps1 -Recurse
 .\windows\h264-avi-transcode.ps1 -Recurse
 .\windows\h264-mov-transcode.ps1 -Recurse
+.\windows\transcode_all.ps1 -Recurse
 .\windows\hevc-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse -Threads 8
