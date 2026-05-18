@@ -9,7 +9,7 @@
 # - Renames files with spaces to use underscores
 # - Transcodes .wmv files to H.264 (libx264 codec, or hardware accel if requested)
 # - Detects 4K/UltraHD sources via ffprobe and forces stable 1080p downscale settings
-# - Copies audio streams without re-encoding
+# - Re-encodes audio to AAC for MP4 container compatibility
 # - Strips metadata to avoid stream mismatch errors
 # - Deletes original files after successful transcoding
 # - Skips files that have already been processed
@@ -253,7 +253,8 @@ try {
                 -c:v $activeCodec `
                 @activeQualityOpts `
                 -preset $activePreset `
-                -c:a copy `
+                -c:a aac `
+                -b:a 192k `
                 -map_metadata -1 `
                 -movflags +faststart `
                 -y `
