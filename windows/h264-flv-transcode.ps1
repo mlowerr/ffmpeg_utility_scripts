@@ -277,11 +277,11 @@ try {
                         }
                         else {
                             try {
-                            Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
-                            Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
-                            Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
-                        }
-                        catch {
+                                Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
+                                Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
+                                Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
+                            }
+                            catch {
                             Write-Host "Error: Failed finalizing '$($file.FullName)'. Keeping source. $_"
                             if (Test-Path -LiteralPath $tempOutput) {
                                 Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
