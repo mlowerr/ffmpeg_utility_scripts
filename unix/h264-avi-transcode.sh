@@ -73,20 +73,20 @@ trap 'handle_interrupt 143' TERM
 # Determine video codec and quality settings based on hardware acceleration option
 VIDEO_CODEC="libx264"
 PRESET="veryfast"
-QUALITY_OPTS=(-crf 24)
+QUALITY_OPTS=(-crf 26)
 
 if [[ "$USE_QSV" == true ]]; then
     VIDEO_CODEC="h264_qsv"
     PRESET="fast"
-    QUALITY_OPTS=(-global_quality 24)
+    QUALITY_OPTS=(-global_quality 26)
 elif [[ "$USE_NVENC" == true ]]; then
     VIDEO_CODEC="h264_nvenc"
     PRESET="p4"
-    QUALITY_OPTS=(-rc vbr -cq 24)
+    QUALITY_OPTS=(-rc vbr -cq 26)
 elif [[ "$USE_AMF" == true ]]; then
     VIDEO_CODEC="h264_amf"
     PRESET="speed"
-    QUALITY_OPTS=(-qp_i 24 -qp_p 24 -qp_b 24)
+    QUALITY_OPTS=(-qp_i 26 -qp_p 26 -qp_b 26)
 fi
 
 # Sanitize filename for safe use in shell

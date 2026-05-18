@@ -38,22 +38,22 @@ $ErrorActionPreference = "Continue"
 # Determine video codec and quality settings based on hardware acceleration option
 $videoCodec = "libx265"
 $preset = "medium"
-$qualityOpts = @("-crf", "24")
+$qualityOpts = @("-crf", "26")
 
 if ($UseQuickSync) {
     $videoCodec = "hevc_qsv"
     $preset = "medium"
-    $qualityOpts = @("-global_quality", "24")
+    $qualityOpts = @("-global_quality", "26")
 }
 elseif ($UseNVENC) {
     $videoCodec = "hevc_nvenc"
     $preset = "p4"
-    $qualityOpts = @("-rc", "vbr", "-cq", "24")
+    $qualityOpts = @("-rc", "vbr", "-cq", "26")
 }
 elseif ($UseAMF) {
     $videoCodec = "hevc_amf"
     $preset = "speed"
-    $qualityOpts = @("-qp_i", "24", "-qp_p", "24", "-qp_b", "24")
+    $qualityOpts = @("-qp_i", "26", "-qp_p", "26", "-qp_b", "26")
 }
 
 $tempOutput = $null
@@ -130,6 +130,17 @@ function Test-ValidFilePath {
         return $false
     }
     return $true
+}
+
+function Get-AudioStreamCount {
+    param([string]$Path)
+    $streams = & ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 -- $Path 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $streams) {
+        return 0
+    }
+
+    $streamLines = @($streams | Where-Object { $_ -ne "" })
+    return $streamLines.Count
 }
 
 try {
@@ -253,15 +264,24 @@ try {
                     # Suppress ffprobe stderr so problematic files are handled silently.
                     $null = & ffprobe -v error -- $tempOutput 2>$null
                     if ($LASTEXITCODE -eq 0) {
-                        try {
+                        $inputAudioStreams = Get-AudioStreamCount -Path $file.FullName
+                        $outputAudioStreams = Get-AudioStreamCount -Path $tempOutput
+
+                        if (($inputAudioStreams -gt 0) -and ($outputAudioStreams -lt $inputAudioStreams)) {
+                            Write-Host "Error: Audio stream count mismatch for '$($file.FullName)' (input: $inputAudioStreams, output: $outputAudioStreams). Keeping source."
+                            Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                        }
+                        else {
+                            try {
                             Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
                             Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
                             Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
                         }
-                        catch {
-                            Write-Host "Error: Failed finalizing '$($file.FullName)'. Keeping source. $_"
-                            if (Test-Path -LiteralPath $tempOutput) {
-                                Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                            catch {
+                                Write-Host "Error: Failed finalizing '$($file.FullName)'. Keeping source. $_"
+                                if (Test-Path -LiteralPath $tempOutput) {
+                                    Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                                }
                             }
                         }
                     }
