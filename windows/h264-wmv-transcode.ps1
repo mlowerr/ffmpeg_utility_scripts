@@ -274,10 +274,9 @@ try {
                         if (($inputAudioStreams -gt 0) -and ($outputAudioStreams -lt $inputAudioStreams)) {
                             Write-Host "Error: Audio stream count mismatch for '$($file.FullName)' (input: $inputAudioStreams, output: $outputAudioStreams). Keeping source."
                             Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
-                            continue
                         }
-
-                        try {
+                        else {
+                            try {
                             Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
                             Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
                             Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
