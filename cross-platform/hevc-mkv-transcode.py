@@ -41,19 +41,19 @@ def parse_args() -> argparse.Namespace:
 def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
     video_codec = "libx265"
     preset = "medium"
-    quality_opts = ["-crf", "24"]
+    quality_opts = ["-crf", "26"]
 
     if args.quick_sync:
         video_codec = "hevc_qsv"
-        quality_opts = ["-global_quality", "24"]
+        quality_opts = ["-global_quality", "26"]
     elif args.nvenc:
         video_codec = "hevc_nvenc"
         preset = "p4"
-        quality_opts = ["-rc", "vbr", "-cq", "24"]
+        quality_opts = ["-rc", "vbr", "-cq", "26"]
     elif args.amf:
         video_codec = "hevc_amf"
         preset = "speed"
-        quality_opts = ["-qp_i", "24", "-qp_p", "24", "-qp_b", "24"]
+        quality_opts = ["-qp_i", "26", "-qp_p", "26", "-qp_b", "26"]
 
     return video_codec, preset, quality_opts
 

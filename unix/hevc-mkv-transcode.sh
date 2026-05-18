@@ -68,20 +68,20 @@ trap 'rm -f -- "$temp_output"; exit' INT TERM EXIT
 
 VIDEO_CODEC="libx265"
 PRESET="medium"
-QUALITY_OPTS="-crf 24"
+QUALITY_OPTS="-crf 26"
 
 if [[ "$USE_QSV" == true ]]; then
     VIDEO_CODEC="hevc_qsv"
     PRESET="medium"
-    QUALITY_OPTS="-global_quality 24"
+    QUALITY_OPTS="-global_quality 26"
 elif [[ "$USE_NVENC" == true ]]; then
     VIDEO_CODEC="hevc_nvenc"
     PRESET="p4"
-    QUALITY_OPTS="-rc vbr -cq 24"
+    QUALITY_OPTS="-rc vbr -cq 26"
 elif [[ "$USE_AMF" == true ]]; then
     VIDEO_CODEC="hevc_amf"
     PRESET="speed"
-    QUALITY_OPTS="-qp_i 24 -qp_p 24 -qp_b 24"
+    QUALITY_OPTS="-qp_i 26 -qp_p 26 -qp_b 26"
 fi
 
 THREAD_OPTS=()
