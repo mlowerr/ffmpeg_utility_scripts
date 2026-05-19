@@ -61,7 +61,7 @@ def detect_dimensions(path):
 def build_video_cmd(src, tmp, profile, hw, threads, force_aac=False):
     q = profile["quality"]
     scale_opts = []
-    is_h264_profile = profile["suffix"] == "_REDU"
+    needs_uhd_fallback = profile["suffix"] == "_REDU" or (profile["suffix"] == "_HEVC" and profile["out_ext"] == ".mp4")
 
     if profile["suffix"] == "_HEVC":
         codec = "libx265"
@@ -84,7 +84,7 @@ def build_video_cmd(src, tmp, profile, hw, threads, force_aac=False):
         elif hw == "amf":
             codec, preset, qopts = "h264_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
 
-    if is_h264_profile:
+    if needs_uhd_fallback:
         width, height = detect_dimensions(src)
         if width is not None and height is not None and (width >= 3840 or height >= 2160):
             print(f"UHD/4K detected ({width}x{height}): forcing aspect-safe 1080p downscale profile for stability.")
