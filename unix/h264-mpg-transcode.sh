@@ -1,7 +1,7 @@
 #!/bin/bash
 # H.264 Video Transcoding Script
 # ===============================
-# This script transcodes MPG video files to H.264 format using ffmpeg.
+# This script transcodes AVI video files to H.264 format using ffmpeg.
 # It reduces file size while maintaining quality using CRF 24 for standard
 # sources and automatically downscales 4K inputs to 1080p (CRF 22) for
 # improved stability.
@@ -125,9 +125,9 @@ process_file() {
     local dir
     dir=$(dirname "$f")
     local base_name
-    # Strip extension case-insensitively (.avi, .AVI, .Avi, etc.)
+    # Strip extension case-insensitively (.mpg, .MPG, .Avi, etc.)
     base_name=$(basename "$f")
-    base_name="${base_name%.[Mm][Pp][Gg]}"
+    base_name="${base_name%.[Aa][Vv][Ii]}"
 
     local output="$dir/${base_name}_REDU.mp4"
     local temp_out="$dir/${base_name}_REDU.tmp.mp4"
@@ -172,18 +172,31 @@ process_file() {
     fi
 
     printf 'Transcoding %q using %s...\n' "$f" "$active_codec"
-    
-    if ffmpeg -hide_banner -loglevel warning -stats \
+
+    run_ffmpeg() {
+        local audio_mode="$1"
+        local -a audio_args
+
+        if [[ "$audio_mode" == "copy" ]]; then
+            audio_args=(-c:a copy)
+        else
+            audio_args=(-c:a aac -b:a 192k)
+        fi
+
+        ffmpeg -hide_banner -loglevel warning -stats \
             -i "$f" \
             -map "0:v:0?" -map "0:a?" \
             -c:v "$active_codec" \
             "${active_quality_opts[@]}" \
             -preset "$active_preset" \
-            -c:a copy \
+            "${audio_args[@]}" \
             -map_metadata -1 \
             -movflags +faststart \
             -y \
-            "$temp_out"; then
+            "$temp_out"
+    }
+
+    if run_ffmpeg "copy"; then
         # Print two blank lines after ffmpeg
         printf '\n\n'
         
@@ -226,9 +239,44 @@ process_file() {
     else
         # Print two blank lines after ffmpeg
         printf '\n\n'
-        printf 'Error: ffmpeg failed on %q. Keeping source.\n' "$f" >&2
+        printf 'Warning: ffmpeg failed with audio copy for %q. Retrying with AAC audio transcode.\n' "$f" >&2
         rm -f -- "$temp_out"
-        ((FAILED_COUNT++))
+
+        if run_ffmpeg "aac"; then
+            # Print two blank lines after ffmpeg
+            printf '\n\n'
+
+            if [[ -s "$temp_out" ]]; then
+                if ffprobe -v error "$temp_out" >/dev/null 2>&1; then
+                    if mv -- "$temp_out" "$output"; then
+                        if rm -- "$f"; then
+                            printf 'Successfully transcoded %q to %q with AAC audio fallback. Source deleted.\n' "$f" "$output"
+                        else
+                            printf 'Warning: Transcoded %q but failed to remove source.\n' "$f" >&2
+                            ((FAILED_COUNT++))
+                        fi
+                    else
+                        printf 'Error: Failed to move temp file to output for %q.\n' "$f" >&2
+                        rm -f -- "$temp_out"
+                        ((FAILED_COUNT++))
+                    fi
+                else
+                    printf 'Error: Output file verification failed for %q after AAC fallback. Keeping source.\n' "$f" >&2
+                    rm -f -- "$temp_out"
+                    ((FAILED_COUNT++))
+                fi
+            else
+                printf 'Error: Temporary output %q is empty after AAC fallback. Keeping source %q.\n' "$temp_out" "$f" >&2
+                rm -f -- "$temp_out"
+                ((FAILED_COUNT++))
+            fi
+        else
+            # Print two blank lines after ffmpeg
+            printf '\n\n'
+            printf 'Error: ffmpeg failed on %q even after AAC fallback. Keeping source.\n' "$f" >&2
+            rm -f -- "$temp_out"
+            ((FAILED_COUNT++))
+        fi
     fi
     temp_output=""
 }
