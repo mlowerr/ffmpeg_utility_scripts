@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,21 +29,86 @@ def out_name(p: Path, profile):
     return p.with_name(stem + profile["out_ext"]), p.with_name(stem + ".tmp" + profile["out_ext"])
 
 
+def detect_dimensions(path):
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        return None, None
+    line = probe.stdout.strip().splitlines()[0] if probe.stdout.strip() else ""
+    parts = line.split("x")
+    if len(parts) != 2:
+        return None, None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None, None
+
+
 def build_video_cmd(src, tmp, profile, hw, threads):
     q = profile["quality"]
-    if profile["suffix"] == "_HEVC":
-        codec = "libx265"; preset = "medium"; qopts = ["-crf", str(q)]
-        if hw == "qsv": codec, preset, qopts = "hevc_qsv", "medium", ["-global_quality", str(q)]
-        elif hw == "nvenc": codec, preset, qopts = "hevc_nvenc", "p4", ["-rc", "vbr", "-cq", str(q)]
-        elif hw == "amf": codec, preset, qopts = "hevc_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
-    else:
-        codec = "libx264"; preset = "veryfast"; qopts = ["-crf", str(q)]
-        if hw == "qsv": codec, preset, qopts = "h264_qsv", "fast", ["-global_quality", str(q)]
-        elif hw == "nvenc": codec, preset, qopts = "h264_nvenc", "p4", ["-rc", "vbr", "-cq", str(q)]
-        elif hw == "amf": codec, preset, qopts = "h264_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
+    scale_opts = []
+    is_h264_profile = profile["suffix"] == "_REDU"
 
-    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-stats", "-i", str(src), "-map", "0:v:0?", "-map", "0:a?",
-           "-c:v", codec, *qopts, "-preset", preset, "-c:a", "copy", "-map_metadata", "-1"]
+    if profile["suffix"] == "_HEVC":
+        codec = "libx265"
+        preset = "medium"
+        qopts = ["-crf", str(q)]
+        if hw == "qsv":
+            codec, preset, qopts = "hevc_qsv", "medium", ["-global_quality", str(q)]
+        elif hw == "nvenc":
+            codec, preset, qopts = "hevc_nvenc", "p4", ["-rc", "vbr", "-cq", str(q)]
+        elif hw == "amf":
+            codec, preset, qopts = "hevc_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
+    else:
+        codec = "libx264"
+        preset = "veryfast"
+        qopts = ["-crf", str(q)]
+        if hw == "qsv":
+            codec, preset, qopts = "h264_qsv", "fast", ["-global_quality", str(q)]
+        elif hw == "nvenc":
+            codec, preset, qopts = "h264_nvenc", "p4", ["-rc", "vbr", "-cq", str(q)]
+        elif hw == "amf":
+            codec, preset, qopts = "h264_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
+
+    if is_h264_profile:
+        width, height = detect_dimensions(src)
+        if width is not None and height is not None and (width >= 3840 or height >= 2160):
+            print(f"UHD/4K detected ({width}x{height}): forcing aspect-safe 1080p downscale profile for stability.")
+            codec = "libx264"
+            preset = "veryfast"
+            qopts = ["-crf", "22"]
+            scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-stats",
+        "-i",
+        str(src),
+        "-map",
+        "0:v:0?",
+        "-map",
+        "0:a?",
+    ]
+    if profile["out_ext"] == ".mkv":
+        cmd += ["-map", "0:s?", "-c:s", "copy"]
+    cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, "-c:a", "copy", "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
         cmd += ["-movflags", "+faststart"]
     if threads:
@@ -107,17 +171,22 @@ def main():
             tmp.unlink()
         cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads)
         if not run(cmd):
-            print(f"Error: ffmpeg failed on {src}", file=sys.stderr); failed += 1
-            if tmp.exists(): tmp.unlink()
+            print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+            failed += 1
+            if tmp.exists():
+                tmp.unlink()
             continue
         if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
-            print(f"Error: Output verification failed for {src}", file=sys.stderr); failed += 1
-            if tmp.exists(): tmp.unlink()
+            print(f"Error: Output verification failed for {src}", file=sys.stderr)
+            failed += 1
+            if tmp.exists():
+                tmp.unlink()
             continue
         if profile["mode"] == "video":
             ina, outa = count_audio(src), count_audio(tmp)
             if ina > 0 and outa < ina:
-                print(f"Error: Audio stream mismatch for {src}", file=sys.stderr); failed += 1
+                print(f"Error: Audio stream mismatch for {src}", file=sys.stderr)
+                failed += 1
                 tmp.unlink(missing_ok=True)
                 continue
         try:
@@ -125,10 +194,12 @@ def main():
             src.unlink()
             print(f"Successfully processed {src} -> {out}")
         except Exception as e:
-            print(f"Error finalizing {src}: {e}", file=sys.stderr); failed += 1
+            print(f"Error finalizing {src}: {e}", file=sys.stderr)
+            failed += 1
             tmp.unlink(missing_ok=True)
 
     return 1 if failed else 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
