@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -139,6 +140,22 @@ def count_audio(path):
     return len([x for x in p.stdout.splitlines() if x.strip()])
 
 
+def normalize_input_name(path: Path):
+    if " " not in path.name:
+        return path, False
+    normalized = path.with_name(path.name.replace(" ", "_"))
+    if normalized.exists():
+        print(f"Warning: Cannot rename {path} -> {normalized} (target exists).", file=sys.stderr)
+        return path, False
+    try:
+        path.replace(normalized)
+        print(f"Renamed {path} -> {normalized}")
+        return normalized, True
+    except OSError as exc:
+        print(f"Warning: Failed to rename {path} -> {normalized}: {exc}", file=sys.stderr)
+        return path, False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile", required=True, choices=sorted(PROFILES))
@@ -165,59 +182,84 @@ def main():
         if out.exists():
             continue
         candidates.append(p)
+    candidates = sorted(candidates, key=lambda item: str(item).lower())
 
     if not candidates:
         print(f"No eligible {profile['ext']} files found to process.")
         return 0
 
     failed = 0
-    for i, src in enumerate(candidates, 1):
-        print(f"\n\nProcessing file {i} of {len(candidates)}\n")
-        out, tmp = out_name(src, profile)
-        if tmp.exists():
-            tmp.unlink()
-        cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads)
-        if not run(cmd):
-            if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
-                print(f"Audio copy failed for {src}; retrying with AAC audio fallback.")
-                if tmp.exists():
-                    tmp.unlink()
-                cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, force_aac=True)
-                if not run(cmd):
+    active_tmp = None
+    interrupted = False
+
+    def cleanup_and_exit(signum, _frame):
+        nonlocal active_tmp, interrupted
+        interrupted = True
+        if active_tmp and active_tmp.exists():
+            active_tmp.unlink(missing_ok=True)
+        raise KeyboardInterrupt(f"Signal {signum}")
+
+    signal.signal(signal.SIGINT, cleanup_and_exit)
+    signal.signal(signal.SIGTERM, cleanup_and_exit)
+
+    try:
+        for i, original_src in enumerate(candidates, 1):
+            print(f"\n\nProcessing file {i} of {len(candidates)}\n")
+            src, _ = normalize_input_name(original_src)
+            out, tmp = out_name(src, profile)
+            active_tmp = tmp
+            if tmp.exists():
+                tmp.unlink()
+            cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads)
+            if not run(cmd):
+                if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
+                    print(f"Audio copy failed for {src}; retrying with AAC audio fallback.")
+                    if tmp.exists():
+                        tmp.unlink()
+                    cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, force_aac=True)
+                    if not run(cmd):
+                        print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+                        failed += 1
+                        if tmp.exists():
+                            tmp.unlink()
+                        active_tmp = None
+                        continue
+                else:
                     print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
                     failed += 1
                     if tmp.exists():
                         tmp.unlink()
+                    active_tmp = None
                     continue
-            else:
-                print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+            if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
+                print(f"Error: Output verification failed for {src}", file=sys.stderr)
                 failed += 1
                 if tmp.exists():
                     tmp.unlink()
+                active_tmp = None
                 continue
-        if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
-            print(f"Error: Output verification failed for {src}", file=sys.stderr)
-            failed += 1
-            if tmp.exists():
-                tmp.unlink()
-            continue
-        if profile["mode"] == "video":
-            ina, outa = count_audio(src), count_audio(tmp)
-            if ina > 0 and outa < ina:
-                print(f"Error: Audio stream mismatch for {src}", file=sys.stderr)
+            if profile["mode"] == "video":
+                ina, outa = count_audio(src), count_audio(tmp)
+                if ina > 0 and outa < ina:
+                    print(f"Error: Audio stream mismatch for {src}", file=sys.stderr)
+                    failed += 1
+                    tmp.unlink(missing_ok=True)
+                    active_tmp = None
+                    continue
+            try:
+                tmp.replace(out)
+                src.unlink()
+                print(f"Successfully processed {src} -> {out}")
+            except Exception as e:
+                print(f"Error finalizing {src}: {e}", file=sys.stderr)
                 failed += 1
                 tmp.unlink(missing_ok=True)
-                continue
-        try:
-            tmp.replace(out)
-            src.unlink()
-            print(f"Successfully processed {src} -> {out}")
-        except Exception as e:
-            print(f"Error finalizing {src}: {e}", file=sys.stderr)
-            failed += 1
-            tmp.unlink(missing_ok=True)
+            active_tmp = None
+    except KeyboardInterrupt:
+        print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
+        failed += 1
 
-    return 1 if failed else 0
+    return 1 if failed or interrupted else 0
 
 
 if __name__ == "__main__":
