@@ -127,7 +127,7 @@ process_file() {
     local base_name
     # Strip extension case-insensitively (.flv, .FLV, .Avi, etc.)
     base_name=$(basename "$f")
-    base_name="${base_name%.[Aa][Vv][Ii]}"
+    base_name="${base_name%.[Ff][Ll][Vv]}"
 
     local output="$dir/${base_name}_REDU.mp4"
     local temp_out="$dir/${base_name}_REDU.tmp.mp4"

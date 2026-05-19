@@ -1,6 +1,6 @@
 # H.264 Video Transcoding Script
 # ===============================
-# This script transcodes AVI video files to H.264 format using ffmpeg.
+# This script transcodes MPG video files to H.264 format using ffmpeg.
 # It reduces file size while maintaining quality using CRF 24 for standard
 # sources and automatically downscales 4K inputs to 1080p (CRF 22) for
 # improved stability.
