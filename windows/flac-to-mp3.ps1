@@ -4,5 +4,18 @@ if ($UseQuickSync) { $hw = "qsv" } elseif ($UseNVENC) { $hw = "nvenc" } elseif (
 $args = @("--profile", "flac_mp3", "--hw", $hw)
 if ($Recurse) { $args += "--recursive" }
 if ($PSBoundParameters.ContainsKey("Threads")) { $args += @("--threads", $Threads) }
-& python3 (Join-Path $PSScriptRoot "..\cross-platform\transcode_cli.py") @args
+$cliPath = Join-Path $PSScriptRoot "..\cross-platform\transcode_cli.py"
+if (Get-Command py -ErrorAction SilentlyContinue) {
+    & py -3 $cliPath @args
+}
+elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+    & python3 $cliPath @args
+}
+elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    & python $cliPath @args
+}
+else {
+    Write-Error "Python launcher not found. Install Python and ensure py, python3, or python is on PATH."
+    exit 1
+}
 exit $LASTEXITCODE

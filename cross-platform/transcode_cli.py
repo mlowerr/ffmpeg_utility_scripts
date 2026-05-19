@@ -58,7 +58,7 @@ def detect_dimensions(path):
         return None, None
 
 
-def build_video_cmd(src, tmp, profile, hw, threads):
+def build_video_cmd(src, tmp, profile, hw, threads, force_aac=False):
     q = profile["quality"]
     scale_opts = []
     is_h264_profile = profile["suffix"] == "_REDU"
@@ -108,7 +108,10 @@ def build_video_cmd(src, tmp, profile, hw, threads):
     ]
     if profile["out_ext"] == ".mkv":
         cmd += ["-map", "0:s?", "-c:s", "copy"]
-    cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, "-c:a", "copy", "-map_metadata", "-1"]
+    audio_opts = ["-c:a", "copy"]
+    if force_aac:
+        audio_opts = ["-c:a", "aac", "-b:a", "192k"]
+    cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, *audio_opts, "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
         cmd += ["-movflags", "+faststart"]
 
@@ -175,11 +178,23 @@ def main():
             tmp.unlink()
         cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads)
         if not run(cmd):
-            print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
-            failed += 1
-            if tmp.exists():
-                tmp.unlink()
-            continue
+            if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
+                print(f"Audio copy failed for {src}; retrying with AAC audio fallback.")
+                if tmp.exists():
+                    tmp.unlink()
+                cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, force_aac=True)
+                if not run(cmd):
+                    print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+                    failed += 1
+                    if tmp.exists():
+                        tmp.unlink()
+                    continue
+            else:
+                print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+                failed += 1
+                if tmp.exists():
+                    tmp.unlink()
+                continue
         if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
             print(f"Error: Output verification failed for {src}", file=sys.stderr)
             failed += 1
