@@ -111,6 +111,10 @@ def build_video_cmd(src, tmp, profile, hw, threads):
     cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, "-c:a", "copy", "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
         cmd += ["-movflags", "+faststart"]
+
+    if profile["suffix"] == "_HEVC" and codec == "libx265" and threads:
+        cmd += ["-x265-params", f"pools={threads}"]
+
     if threads:
         cmd += ["-threads", str(threads)]
     cmd += ["-y", str(tmp)]
