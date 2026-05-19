@@ -209,6 +209,8 @@ python3 .\cross-platform\hevc-mkv-transcode.py --nvenc
 
 See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instructions.
 
+For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logic, see [cross-platform/dedup-refactor-plan.md](cross-platform/dedup-refactor-plan.md).
+
 ## How It Works
 
 1. **File Preparation**: Renames files with spaces to use underscores
