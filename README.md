@@ -29,7 +29,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── h264-transcode.sh          # H.264 encoding for MP4 (Bash)
 │   ├── h264-avi-transcode.sh      # H.264 encoding for AVI (Bash)
 │   ├── h264-mov-transcode.sh      # H.264 encoding for MOV (Bash)
-│   ├── transcode_all.sh            # Run AVI, MOV, then MP4 H.264 workflows (Bash)
+│   ├── h264-wmv-transcode.sh      # H.264 encoding for WMV (Bash)
+│   ├── transcode_all.sh            # Run AVI, FLV, MOV, MPG, WMV, then MP4 H.264 workflows (Bash)
 │   ├── hevc-transcode.sh          # HEVC/H.265 encoding for MP4 (Bash)
 │   ├── hevc-mkv-transcode.sh      # HEVC/H.265 encoding for MKV (Bash)
 │   └── wav-to-mp3.sh              # WAV to 256k MP3 (Bash)
@@ -38,7 +39,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── h264-transcode.ps1         # H.264 encoding for MP4 (PowerShell)
 │   ├── h264-avi-transcode.ps1     # H.264 encoding for AVI (PowerShell)
 │   ├── h264-mov-transcode.ps1     # H.264 encoding for MOV (PowerShell)
-│   ├── transcode_all.ps1           # Run AVI, MOV, then MP4 H.264 workflows (PowerShell)
+│   ├── h264-wmv-transcode.ps1     # H.264 encoding for WMV (PowerShell)
+│   ├── transcode_all.ps1           # Run AVI, FLV, MOV, MPG, WMV, then MP4 H.264 workflows (PowerShell)
 │   ├── hevc-transcode.ps1         # HEVC/H.265 encoding for MP4 (PowerShell)
 │   ├── hevc-mkv-transcode.ps1     # HEVC/H.265 encoding for MKV (PowerShell)
 │   └── wav-to-mp3.ps1             # WAV to 256k MP3 (PowerShell)
@@ -91,6 +93,7 @@ Process supported video files in the current directory:
 ./unix/h264-transcode.sh      # MP4 input
 ./unix/h264-avi-transcode.sh  # AVI input
 ./unix/h264-mov-transcode.sh  # MOV input
+./unix/h264-wmv-transcode.sh  # WMV input
 ./unix/transcode_all.sh        # AVI, MOV, then MP4 inputs
 
 # Linux/macOS - HEVC encoding
@@ -100,6 +103,7 @@ Process supported video files in the current directory:
 .\windows\h264-transcode.ps1      # MP4 input
 .\windows\h264-avi-transcode.ps1  # AVI input
 .\windows\h264-mov-transcode.ps1  # MOV input
+.\windows\h264-wmv-transcode.ps1  # WMV input
 .\windows\transcode_all.ps1        # AVI, MOV, then MP4 inputs
 
 # Windows - HEVC encoding (PowerShell)
@@ -140,6 +144,7 @@ Process supported video files from the current directory downward:
 ./unix/h264-transcode.sh -r
 ./unix/h264-avi-transcode.sh -r
 ./unix/h264-mov-transcode.sh -r
+./unix/h264-wmv-transcode.sh -r
 ./unix/transcode_all.sh -r
 ./unix/hevc-transcode.sh -r
 ./unix/hevc-mkv-transcode.sh -r
@@ -151,6 +156,7 @@ Process supported video files from the current directory downward:
 .\windows\h264-transcode.ps1 -Recurse
 .\windows\h264-avi-transcode.ps1 -Recurse
 .\windows\h264-mov-transcode.ps1 -Recurse
+.\windows\h264-wmv-transcode.ps1 -Recurse
 .\windows\transcode_all.ps1 -Recurse
 .\windows\hevc-transcode.ps1 -Recurse
 .\windows\hevc-mkv-transcode.ps1 -Recurse
@@ -180,6 +186,7 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 ./unix/h264-transcode.sh -r -q
 ./unix/h264-avi-transcode.sh -r -q
 ./unix/h264-mov-transcode.sh -r -q
+./unix/h264-wmv-transcode.sh -r -q
 ./unix/hevc-transcode.sh -q
 ./unix/hevc-mkv-transcode.sh -q
 
@@ -187,12 +194,14 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 ./unix/h264-transcode.sh -r -n
 ./unix/h264-avi-transcode.sh -r -n
 ./unix/h264-mov-transcode.sh -r -n
+./unix/h264-wmv-transcode.sh -r -n
 ./unix/hevc-transcode.sh -n
 
 # Windows with NVIDIA GPU
 .\windows\h264-transcode.ps1 -Recurse -UseNVENC
 .\windows\h264-avi-transcode.ps1 -Recurse -UseNVENC
 .\windows\h264-mov-transcode.ps1 -Recurse -UseNVENC
+.\windows\h264-wmv-transcode.ps1 -Recurse -UseNVENC
 .\windows\hevc-transcode.ps1 -UseNVENC
 .\windows\hevc-mkv-transcode.ps1 -UseNVENC
 python3 .\cross-platform\hevc-mkv-transcode.py --nvenc
@@ -229,12 +238,13 @@ See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instru
 
 | Setting | Software | Intel QSV | NVIDIA NVENC | AMD AMF |
 |---------|----------|-----------|--------------|---------|
-| Quality | CRF 26 | Global Quality 26 | CQ 26 | QP 26 |
+| Quality (default) | CRF 26 | Global Quality 26 | CQ 26 | QP 26 |
 | H.264 Preset | veryfast | fast | p4 | speed |
 | HEVC Preset | medium | medium | p4 | speed |
 
 **Note:** Hardware encoders trade some quality for speed. For archival storage, software encoding is recommended.
 For MKV HEVC scripts, thread limits are available as `-t <N>` (Unix), `-Threads <N>` (PowerShell), and `--threads <N>` (Python), with `libx265` using that value for its worker pool.
+WMV-specific H.264 scripts (`h264-wmv-transcode.sh` and `h264-wmv-transcode.ps1`) use quality level **24** across software and hardware encoder paths per the WMV requirement.
 
 ## Troubleshooting
 

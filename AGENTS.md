@@ -12,11 +12,13 @@ ffmpeg_utility_scripts/
 ├── unix/
 │   ├── flac-to-mp3.sh       # FLAC to 256k MP3 (Bash)
 │   ├── h264-transcode.sh    # H.264 transcoding (Bash)
+│   ├── h264-wmv-transcode.sh # H.264 WMV transcoding (Bash)
 │   ├── hevc-transcode.sh    # HEVC/H.265 transcoding (Bash)
 │   └── wav-to-mp3.sh        # WAV to 256k MP3 (Bash)
 └── windows/
     ├── flac-to-mp3.ps1      # FLAC to 256k MP3 (PowerShell)
     ├── h264-transcode.ps1   # H.264 transcoding (PowerShell)
+    ├── h264-wmv-transcode.ps1 # H.264 WMV transcoding (PowerShell)
     ├── hevc-transcode.ps1   # HEVC transcoding (PowerShell)
     └── wav-to-mp3.ps1       # WAV to 256k MP3 (PowerShell)
 ```
@@ -191,6 +193,8 @@ VIDEO_CODEC="libx264"  # or "libx265"
 QUALITY_OPTS="-crf 24"
 PRESET="veryfast"
 ```
+
+**WMV exception:** For WMV-specific H.264 scripts (`h264-wmv-transcode.sh` and `h264-wmv-transcode.ps1`), use quality level `24` (software and hardware paths) instead of `26`.
 
 #### Stream Mapping
 ```bash
