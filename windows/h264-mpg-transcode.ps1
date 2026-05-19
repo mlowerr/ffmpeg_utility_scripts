@@ -1,6 +1,6 @@
 # H.264 Video Transcoding Script
 # ===============================
-# This script transcodes MPG video files to H.264 format using ffmpeg.
+# This script transcodes AVI video files to H.264 format using ffmpeg.
 # It reduces file size while maintaining quality using CRF 24 for standard
 # sources and automatically downscales 4K inputs to 1080p (CRF 22) for
 # improved stability.
@@ -148,6 +148,33 @@ function Get-AudioStreamCount {
     return $streamLines.Count
 }
 
+function Invoke-Transcode {
+    param(
+        [string]$InputPath,
+        [string]$OutputPath,
+        [string]$VideoCodec,
+        [string]$Preset,
+        [string[]]$VideoQualityOptions,
+        [switch]$TranscodeAudio
+    )
+
+    $audioArgs = if ($TranscodeAudio) { @("-c:a", "aac", "-b:a", "192k") } else { @("-c:a", "copy") }
+
+    & ffmpeg -hide_banner -loglevel warning -stats `
+        -i $InputPath `
+        -map "0:v:0?" -map "0:a?" `
+        -c:v $VideoCodec `
+        @VideoQualityOptions `
+        -preset $Preset `
+        @audioArgs `
+        -map_metadata -1 `
+        -movflags +faststart `
+        -y `
+        $OutputPath
+
+    return $LASTEXITCODE
+}
+
 try {
     # 1. Rename files: replace literal spaces with underscores
     Get-ChildItem -File @recurseOption | Where-Object { $_.Name -like "* *" } | ForEach-Object {
@@ -247,22 +274,24 @@ try {
 
             Write-Host "Transcoding '$($file.FullName)' using $activeCodec..."
 
-            & ffmpeg -hide_banner -loglevel warning -stats `
-                -i $file.FullName `
-                -map 0:v:0? -map 0:a? `
-                -c:v $activeCodec `
-                @activeQualityOpts `
-                -preset $activePreset `
-                -c:a copy `
-                -map_metadata -1 `
-                -movflags +faststart `
-                -y `
-                $tempOutput
+            $usedAacFallback = $false
+            $exitCode = Invoke-Transcode -InputPath $file.FullName -OutputPath $tempOutput -VideoCodec $activeCodec -Preset $activePreset -VideoQualityOptions $activeQualityOpts
 
             # Print two blank lines after ffmpeg
             Write-Host "`n`n"
 
-            if ($LASTEXITCODE -eq 0) {
+            if ($exitCode -ne 0) {
+                Write-Host "Warning: ffmpeg failed with audio copy for '$($file.FullName)'. Retrying with AAC audio transcode."
+                if (Test-Path -LiteralPath $tempOutput) {
+                    Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+                }
+
+                $exitCode = Invoke-Transcode -InputPath $file.FullName -OutputPath $tempOutput -VideoCodec $activeCodec -Preset $activePreset -VideoQualityOptions $activeQualityOpts -TranscodeAudio
+                $usedAacFallback = ($exitCode -eq 0)
+                Write-Host "`n`n"
+            }
+
+            if ($exitCode -eq 0) {
                 if ((Test-Path -LiteralPath $tempOutput) -and ((Get-Item -LiteralPath $tempOutput).Length -gt 0)) {
                     # Verify output file integrity before deleting source.
                     # Suppress ffprobe stderr so problematic files are handled silently.
@@ -279,6 +308,9 @@ try {
                             try {
                                 Move-Item -LiteralPath $tempOutput -Destination $output -ErrorAction Stop
                                 Remove-Item -LiteralPath $file.FullName -ErrorAction Stop
+                                if ($usedAacFallback) {
+                                    Write-Host "Warning: Used AAC audio fallback for '$($file.FullName)' due to incompatible source audio codec in MP4."
+                                }
                                 Write-Host "Successfully transcoded '$($file.FullName)' to '$output'. Source deleted."
                             }
                             catch {
@@ -305,7 +337,7 @@ try {
                 }
             }
             else {
-                Write-Host "Error: ffmpeg failed on '$($file.Name)'. Keeping source."
+                Write-Host "Error: ffmpeg failed on '$($file.Name)' even after AAC fallback. Keeping source."
                 if (Test-Path -LiteralPath $tempOutput) {
                     Remove-Item -LiteralPath $tempOutput -Force
                 }
