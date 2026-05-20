@@ -16,7 +16,7 @@ while getopts "rqnat:" opt; do
   esac
 done
 args=(--profile flac_mp3)
-[[ "$RECURSE" == true ]] && args+=(--recursive)
+[[ "$RECURSE" == true ]] && args+=(--recurse)
 args+=(--hw "$HW")
 [[ -n "$THREADS" ]] && args+=(--threads "$THREADS")
 exec python3 "$(dirname "$0")/../cross-platform/transcode_cli.py" "${args[@]}"

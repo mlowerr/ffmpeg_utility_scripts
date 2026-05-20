@@ -2,7 +2,7 @@ param([switch]$Recurse,[switch]$UseQuickSync,[switch]$UseNVENC,[switch]$UseAMF,[
 $hw = "software"
 if ($UseQuickSync) { $hw = "qsv" } elseif ($UseNVENC) { $hw = "nvenc" } elseif ($UseAMF) { $hw = "amf" }
 $args = @("--profile", "h264_mpg", "--hw", $hw)
-if ($Recurse) { $args += "--recursive" }
+if ($Recurse) { $args += "--recurse" }
 if ($PSBoundParameters.ContainsKey("Threads")) { $args += @("--threads", $Threads) }
 $cliPath = Join-Path $PSScriptRoot "..\cross-platform\transcode_cli.py"
 if (Get-Command py -ErrorAction SilentlyContinue) {
