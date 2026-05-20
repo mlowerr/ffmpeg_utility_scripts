@@ -160,7 +160,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--profile", required=True, choices=sorted(PROFILES))
     ap.add_argument("--path", default=".")
-    ap.add_argument("--recursive", action="store_true")
+    ap.add_argument("-r", "--recurse", dest="recurse", action="store_true")
     ap.add_argument("--hw", choices=["software", "qsv", "nvenc", "amf", "auto"], default="software")
     ap.add_argument("--threads", type=int)
     args = ap.parse_args()
@@ -184,7 +184,7 @@ def main():
     if not root.is_dir():
         print(f"Error: target path is not a directory: {root}", file=sys.stderr)
         return 1
-    files = root.rglob("*") if args.recursive else root.glob("*")
+    files = root.rglob("*") if args.recurse else root.glob("*")
     candidates = []
     for p in files:
         if not p.is_file():
@@ -269,12 +269,22 @@ def main():
                     continue
             try:
                 tmp.replace(out)
+            except Exception as e:
+                print(f"Error moving temporary output into place for {src}: {e}", file=sys.stderr)
+                failed += 1
+                tmp.unlink(missing_ok=True)
+                active_tmp = None
+                continue
+
+            try:
                 src.unlink()
                 print(f"Successfully processed {src} -> {out}")
             except Exception as e:
-                print(f"Error finalizing {src}: {e}", file=sys.stderr)
+                print(
+                    f"Error deleting source after successful output finalize for {src}: {e}. Output kept at {out}.",
+                    file=sys.stderr,
+                )
                 failed += 1
-                tmp.unlink(missing_ok=True)
             active_tmp = None
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)

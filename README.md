@@ -54,7 +54,31 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 - **Bash** 4.0+ (for Unix scripts)
 - **PowerShell** 5.1+ (for Windows scripts)
 - **ffprobe** (for output verification)
-- **Python** 3.9+ (for cross-platform Python scripts)
+- **Python** 3.10+ recommended (3.9+ supported) for cross-platform Python scripts
+
+### Python Setup (especially for Windows users)
+
+Use a modern Python 3 build so `pathlib`/argument handling behavior is consistent across platforms.
+
+**Recommended version:** Python **3.10, 3.11, or 3.12**.
+
+**Windows install options:**
+```powershell
+# Option 1 (recommended): install from python.org with "Add python.exe to PATH" enabled
+# https://www.python.org/downloads/windows/
+
+# Option 2: winget
+winget install Python.Python.3.12
+```
+
+After install, verify one of these works:
+```powershell
+py -3 --version
+python --version
+python3 --version
+```
+
+The Windows wrapper scripts automatically try `py -3`, then `python3`, then `python`.
 
 ### Installing FFmpeg
 
@@ -168,6 +192,9 @@ python3 ./cross-platform/hevc-mkv-transcode.py --recurse --threads 8
 python3 ./cross-platform/file-type-report.py --recursive /path/to/media
 python3 ./cross-platform/files-by-extension.py --recursive /path/to/media .mp4
 ```
+
+> Note: Transcoding wrappers now standardize on `-r` / `--recurse` for recursive operation.  
+> The standalone file-report helpers still use `--recursive`.
 
 ### Hardware Acceleration
 
