@@ -168,7 +168,17 @@ def main():
         args.hw = "software"
 
     profile = PROFILES[args.profile]
-    root = Path(args.path)
+    if args.threads is not None and args.threads < 0:
+        print("Error: --threads must be zero or a positive integer", file=sys.stderr)
+        return 1
+
+    root = Path(args.path).expanduser().resolve()
+    if not root.exists():
+        print(f"Error: target path does not exist: {root}", file=sys.stderr)
+        return 1
+    if not root.is_dir():
+        print(f"Error: target path is not a directory: {root}", file=sys.stderr)
+        return 1
     files = root.rglob("*") if args.recursive else root.glob("*")
     candidates = []
     for p in files:
