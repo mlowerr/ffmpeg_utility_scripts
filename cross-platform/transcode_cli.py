@@ -172,7 +172,12 @@ def main():
         print("Error: --threads must be zero or a positive integer", file=sys.stderr)
         return 1
 
-    root = Path(args.path).expanduser().resolve()
+    try:
+        root = Path(args.path).expanduser().resolve()
+    except Exception as exc:
+        print(f"Error: unable to resolve target path '{args.path}': {exc}", file=sys.stderr)
+        return 1
+
     if not root.exists():
         print(f"Error: target path does not exist: {root}", file=sys.stderr)
         return 1
