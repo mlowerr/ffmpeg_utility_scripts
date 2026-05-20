@@ -264,11 +264,11 @@ def main():
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
         failed += 1
-
-    if duplicate_skips:
-        print("\nDuplicate-skip summary:", file=sys.stderr)
-        for entry in duplicate_skips:
-            print(f"- {entry}", file=sys.stderr)
+    finally:
+        if duplicate_skips:
+            print("\nDuplicate-skip summary:", file=sys.stderr)
+            for entry in duplicate_skips:
+                print(f"- {entry}", file=sys.stderr)
 
     return 1 if failed or interrupted else 0
 
