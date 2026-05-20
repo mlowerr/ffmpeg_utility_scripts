@@ -189,6 +189,7 @@ def main():
         return 0
 
     failed = 0
+    duplicate_skips = []
     active_tmp = None
     interrupted = False
 
@@ -207,6 +208,11 @@ def main():
             print(f"\n\nProcessing file {i} of {len(candidates)}\n")
             src, _ = normalize_input_name(original_src)
             out, tmp = out_name(src, profile)
+            if out.exists():
+                msg = f"Skipping {src}: converted output already exists at {out} (possible duplicate after normalization)."
+                print(msg, file=sys.stderr)
+                duplicate_skips.append(msg)
+                continue
             active_tmp = tmp
             if tmp.exists():
                 tmp.unlink()
@@ -258,6 +264,11 @@ def main():
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
         failed += 1
+
+    if duplicate_skips:
+        print("\nDuplicate-skip summary:", file=sys.stderr)
+        for entry in duplicate_skips:
+            print(f"- {entry}", file=sys.stderr)
 
     return 1 if failed or interrupted else 0
 
