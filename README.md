@@ -12,7 +12,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 - **Safe operation**: Verifies output integrity before deleting source files
 - **Progress tracking**: Shows "Processing file X of Y" for batch operations
 - **Smart 4K downscaling**: Automatically downscales 4K+ video to aspect-safe 1080p
-- **Smart file handling**: Auto-renames files with spaces, skips already-processed files
+- **Smart file handling**: Renames each file with spaces at encode time (spaces → underscores), skips already-processed files
 - **File type reporting**: Counts files by extension, lists matching full file paths, and generates per-folder reports
 
 ## Repository Structure
@@ -213,7 +213,7 @@ For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logi
 
 ## How It Works
 
-1. **File Preparation**: Renames files with spaces to use underscores
+1. **File Preparation**: If a selected input filename contains spaces, that file is renamed to use underscores immediately before encoding/conversion
 2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, or lists full paths for a requested extension
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
 4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
@@ -231,7 +231,7 @@ For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logi
 ## Safety Features
 
 - ✓ Output file is verified with ffprobe before source deletion
-- ✓ Temporary files are cleaned up on interruption (Ctrl+C)
+- ✓ Active temporary output is cleaned up on interruption (Ctrl+C / SIGTERM)
 - ✓ Skips files that already have processed versions
 - ✓ Handles filenames with spaces safely
 - ✓ Validates file paths to prevent injection attacks
@@ -252,7 +252,7 @@ WMV-specific H.264 scripts (`h264-wmv-transcode.sh` and `h264-wmv-transcode.ps1`
 
 ### "No eligible MP4/AVI/MOV files found to process"
 - The selected script found no matching input files that have not already been processed
-- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, or `.mov`
+- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, `.mov`, `.mpg`, `.flv`, `.wmv`, `.mkv`, `.flac`, or `.wav`
 - Check that you don't already have `*_REDU.mp4`, `*_HEVC.mp4`, or `*_HEVC.mkv` versions
 
 ### "ffmpeg failed" or "Output file verification failed"
