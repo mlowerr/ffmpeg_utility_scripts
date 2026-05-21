@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import json
+import os
 import signal
 import subprocess
 import sys
@@ -17,6 +19,75 @@ PROFILES = {
     "flac_mp3": {"ext": ".flac", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
     "wav_mp3": {"ext": ".wav", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
 }
+
+
+def default_config_path():
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "ffmpeg-utility-scripts" / "config.json"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "ffmpeg-utility-scripts" / "config.json"
+
+
+def load_user_config(config_path: Path):
+    if not config_path.exists():
+        return {}
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse config file {config_path}: {exc}")
+    if not isinstance(data, dict):
+        raise ValueError("config file must contain a JSON object")
+    return data
+
+
+def normalize_skip_dirs(skip_dir_values, root: Path):
+    normalized = []
+    seen = set()
+    for raw in skip_dir_values:
+        try:
+            candidate = Path(raw).expanduser()
+            if not candidate.is_absolute():
+                candidate = (root / candidate).resolve()
+            else:
+                candidate = candidate.resolve()
+        except Exception:
+            continue
+        key = str(candidate)
+        if key not in seen:
+            normalized.append(candidate)
+            seen.add(key)
+    return normalized
+
+
+def is_path_under(parent: Path, child: Path):
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def should_skip_file(file_path: Path, skip_dirs):
+    return any(is_path_under(skip_dir, file_path) for skip_dir in skip_dirs)
+
+
+def effective_quality(profile_name: str, profile: dict, config: dict, cli_quality):
+    if profile["mode"] != "video":
+        return None
+    if cli_quality is not None:
+        return cli_quality
+    qcfg = config.get("quality", {})
+    if isinstance(qcfg, dict):
+        if profile_name in qcfg and isinstance(qcfg[profile_name], int):
+            return qcfg[profile_name]
+        if "default_video" in qcfg and isinstance(qcfg["default_video"], int):
+            return qcfg["default_video"]
+    elif isinstance(qcfg, int):
+        return qcfg
+    return profile["quality"]
 
 
 def run(cmd):
@@ -59,8 +130,8 @@ def detect_dimensions(path):
         return None, None
 
 
-def build_video_cmd(src, tmp, profile, hw, threads, force_aac=False):
-    q = profile["quality"]
+def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_aac=False):
+    q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     needs_uhd_fallback = profile["suffix"] == "_REDU" or (profile["suffix"] == "_HEVC" and profile["out_ext"] == ".mp4")
 
@@ -163,6 +234,9 @@ def main():
     ap.add_argument("-r", "--recurse", dest="recurse", action="store_true")
     ap.add_argument("--hw", choices=["software", "qsv", "nvenc", "amf", "auto"], default="software")
     ap.add_argument("--threads", type=int)
+    ap.add_argument("--skip-dir", action="append", default=[])
+    ap.add_argument("--quality", type=int)
+    ap.add_argument("--config")
     args = ap.parse_args()
     if args.hw == "auto":
         args.hw = "software"
@@ -170,6 +244,9 @@ def main():
     profile = PROFILES[args.profile]
     if args.threads is not None and args.threads < 0:
         print("Error: --threads must be zero or a positive integer", file=sys.stderr)
+        return 1
+    if args.quality is not None and not (0 <= args.quality <= 51):
+        print("Error: --quality must be between 0 and 51", file=sys.stderr)
         return 1
 
     try:
@@ -184,12 +261,30 @@ def main():
     if not root.is_dir():
         print(f"Error: target path is not a directory: {root}", file=sys.stderr)
         return 1
+
+    config_path = Path(args.config).expanduser().resolve() if args.config else default_config_path()
+    try:
+        config = load_user_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    config_skip_dirs = config.get("skip_dirs", [])
+    if not isinstance(config_skip_dirs, list):
+        print("Error: config key 'skip_dirs' must be a list", file=sys.stderr)
+        return 1
+    raw_skip_dirs = [*config_skip_dirs, *args.skip_dir]
+    skip_dirs = normalize_skip_dirs(raw_skip_dirs, root)
+    selected_quality = effective_quality(args.profile, profile, config, args.quality)
+
     files = root.rglob("*") if args.recurse else root.glob("*")
     candidates = []
     for p in files:
         if not p.is_file():
             continue
         if p.suffix.lower() != profile["ext"]:
+            continue
+        if should_skip_file(p.resolve(), skip_dirs):
             continue
         out, _ = out_name(p, profile)
         if profile["suffix"] and p.name.lower().endswith((profile["suffix"] + profile["out_ext"]).lower()):
@@ -231,13 +326,13 @@ def main():
             active_tmp = tmp
             if tmp.exists():
                 tmp.unlink()
-            cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads)
+            cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
             if not run(cmd):
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
                     print(f"Audio copy failed for {src}; retrying with AAC audio fallback.")
                     if tmp.exists():
                         tmp.unlink()
-                    cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, force_aac=True)
+                    cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality, force_aac=True)
                     if not run(cmd):
                         print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
                         failed += 1
