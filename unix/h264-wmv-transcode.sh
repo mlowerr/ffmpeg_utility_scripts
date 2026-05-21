@@ -8,16 +8,23 @@ THREADS=""
 QUALITY=""
 CONFIG=""
 SKIP_DIRS=()
+need_value() {
+  if [[ $# -lt 2 || -z "${2:-}" ]]; then
+    echo "Error: $1 requires a value." >&2
+    echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path]" >&2
+    exit 1
+  fi
+}
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -r|--recurse) RECURSE=true; shift ;;
     -q) HW="qsv"; shift ;;
     -n) HW="nvenc"; shift ;;
     -a) HW="amf"; shift ;;
-    -t|--threads) THREADS="$2"; shift 2 ;;
-    --quality) QUALITY="$2"; shift 2 ;;
-    --config) CONFIG="$2"; shift 2 ;;
-    --skip-dir) SKIP_DIRS+=("$2"); shift 2 ;;
+    -t|--threads) need_value "$1" "$2"; THREADS="$2"; shift 2 ;;
+    --quality) need_value "$1" "$2"; QUALITY="$2"; shift 2 ;;
+    --config) need_value "$1" "$2"; CONFIG="$2"; shift 2 ;;
+    --skip-dir) need_value "$1" "$2"; SKIP_DIRS+=("$2"); shift 2 ;;
     *) echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path]"; exit 1 ;;
   esac
 done

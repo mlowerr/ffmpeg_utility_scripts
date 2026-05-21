@@ -74,6 +74,13 @@ def should_skip_file(file_path: Path, skip_dirs):
     return any(is_path_under(skip_dir, file_path) for skip_dir in skip_dirs)
 
 
+def validate_quality_value(value, label):
+    if not isinstance(value, int):
+        raise ValueError(f"{label} must be an integer")
+    if not (0 <= value <= 51):
+        raise ValueError(f"{label} must be between 0 and 51")
+
+
 def effective_quality(profile_name: str, profile: dict, config: dict, cli_quality):
     if profile["mode"] != "video":
         return None
@@ -81,11 +88,14 @@ def effective_quality(profile_name: str, profile: dict, config: dict, cli_qualit
         return cli_quality
     qcfg = config.get("quality", {})
     if isinstance(qcfg, dict):
-        if profile_name in qcfg and isinstance(qcfg[profile_name], int):
+        if profile_name in qcfg:
+            validate_quality_value(qcfg[profile_name], f"config quality.{profile_name}")
             return qcfg[profile_name]
-        if "default_video" in qcfg and isinstance(qcfg["default_video"], int):
+        if "default_video" in qcfg:
+            validate_quality_value(qcfg["default_video"], "config quality.default_video")
             return qcfg["default_video"]
-    elif isinstance(qcfg, int):
+    elif qcfg != {}:
+        validate_quality_value(qcfg, "config quality")
         return qcfg
     return profile["quality"]
 
