@@ -285,7 +285,11 @@ def main():
         return 1
     raw_skip_dirs = [*config_skip_dirs, *args.skip_dir]
     skip_dirs = normalize_skip_dirs(raw_skip_dirs, root)
-    selected_quality = effective_quality(args.profile, profile, config, args.quality)
+    try:
+        selected_quality = effective_quality(args.profile, profile, config, args.quality)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     files = root.rglob("*") if args.recurse else root.glob("*")
     candidates = []

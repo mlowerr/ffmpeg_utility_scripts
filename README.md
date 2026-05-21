@@ -236,6 +236,39 @@ python3 .\cross-platform\hevc-mkv-transcode.py --nvenc
 
 See [HARDWARE_ACCEL_GUIDE.md](HARDWARE_ACCEL_GUIDE.md) for detailed setup instructions.
 
+### Quality, Config, and Skip-Directory Options
+
+The `transcode_cli.py`-backed wrappers support runtime overrides and user config:
+
+- `--quality <N>` (Unix wrappers) / `-Quality <N>` (PowerShell wrappers): override video quality for this invocation (`0..51`).
+- `--skip-dir <PATH>` (Unix wrappers) / `-SkipDir <PATH[,PATH2...]>` (PowerShell wrappers): skip processing files under the provided directory path prefix.
+- `--config <PATH>` (Unix wrappers) / `-ConfigPath <PATH>` (PowerShell wrappers): read user preferences from a JSON config file.
+
+Config precedence is: CLI arguments > config values > profile defaults.
+
+Default config path:
+- Linux/macOS: `${XDG_CONFIG_HOME:-~/.config}/ffmpeg-utility-scripts/config.json`
+- Windows: `%APPDATA%\ffmpeg-utility-scripts\config.json`
+
+Example config:
+
+```json
+{
+  "skip_dirs": [
+    "/mnt/c/0-ready",
+    "/mnt/c/archive"
+  ],
+  "quality": {
+    "default_video": 26,
+    "h264_wmv": 24,
+    "hevc_mp4": 25
+  }
+}
+```
+
+Invalid config quality values now fail gracefully with an `Error: ...` message (same `0..51` validation as CLI quality).
+
+
 For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logic, see [cross-platform/dedup-refactor-plan.md](cross-platform/dedup-refactor-plan.md).
 
 ## How It Works
