@@ -327,3 +327,10 @@ done
 - FFmpeg codecs: https://ffmpeg.org/ffmpeg-codecs.html
 - Hardware acceleration: https://trac.ffmpeg.org/wiki/HWAccelIntro
 - Bash strict mode: http://redsymbol.net/articles/unofficial-bash-strict-mode/
+
+
+#### 11. Wrapper Option Forwarding
+For `transcode_cli.py`-backed wrappers (`unix/*-transcode.sh`, `unix/*-to-mp3.sh`, and matching `windows/*.ps1` scripts):
+- Support forwarding for `--quality`/`-Quality`, `--skip-dir`/`-SkipDir`, and `--config`/`-ConfigPath` where implemented.
+- Under Bash `set -u`, always guard option values before reading positional `$2` (for example, `--quality`, `--skip-dir`, `--config`, and `--threads`) and emit a controlled usage error when missing.
+- Config-provided quality values must be validated to the same range as CLI quality (`0..51`) and reported as `Error: ...` without traceback.
