@@ -308,6 +308,17 @@ For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logi
 For MKV HEVC scripts, thread limits are available as `-t <N>` (Unix), `-Threads <N>` (PowerShell), and `--threads <N>` (Python), with `libx265` using that value for its worker pool.
 WMV-specific H.264 scripts (`h264-wmv-transcode.sh` and `h264-wmv-transcode.ps1`) use quality level **24** across software and hardware encoder paths per the WMV requirement.
 
+## Exit Codes
+
+For `cross-platform/transcode_cli.py` and `cross-platform/hevc-mkv-transcode.py`:
+
+- `0`: No hard failures. This includes runs where transcoding succeeded but source cleanup (rename/delete) had warning-level issues; outputs are kept and a cleanup warning summary is printed.
+- `1`: One or more hard failures (transcode, verification, move/finalize, interruption, invalid arguments, or config errors).
+
+Optional strict mode:
+
+- `--strict-cleanup`: upgrades cleanup warnings to hard failures, causing exit code `1` when cleanup issues occur.
+
 ## Troubleshooting
 
 ### "No eligible MP4/AVI/MOV files found to process"
