@@ -60,10 +60,14 @@ def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
 
 def collect_files(root: Path, recurse: bool) -> List[Path]:
     discovery = root.rglob("*") if recurse else root.glob("*")
-    files_to_process: List[Path] = []
+    candidates: List[Path] = []
     for file_path in discovery:
         if not file_path.is_file() or file_path.suffix.lower() != ".mkv":
             continue
+        candidates.append(file_path)
+
+    renamed_candidates: List[Path] = []
+    for file_path in candidates:
         current_path = file_path
         if " " in current_path.name:
             renamed_path = current_path.with_name(current_path.name.replace(" ", "_"))
@@ -76,11 +80,15 @@ def collect_files(root: Path, recurse: bool) -> List[Path]:
                 current_path.rename(renamed_path)
                 print(f"Renamed: '{current_path}' -> '{renamed_path}'")
                 current_path = renamed_path
+        renamed_candidates.append(current_path)
 
+    files_to_process: List[Path] = []
+    existing_after_rename = {path for path in renamed_candidates if path.exists()}
+    for current_path in renamed_candidates:
         if current_path.name.lower().endswith("_hevc.mkv"):
             continue
         output = current_path.with_name(f"{current_path.stem}_HEVC.mkv")
-        if output.exists():
+        if output in existing_after_rename:
             continue
         files_to_process.append(current_path)
     return files_to_process
