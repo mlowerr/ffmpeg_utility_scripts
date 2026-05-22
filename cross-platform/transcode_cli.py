@@ -267,6 +267,7 @@ def main():
     ap.add_argument("--skip-dir", action="append", default=[])
     ap.add_argument("--quality", type=int)
     ap.add_argument("--config")
+    ap.add_argument("--strict-cleanup", action="store_true", help="Treat source cleanup issues as hard failures")
     args = ap.parse_args()
     if args.hw == "auto":
         args.hw = "software"
@@ -332,7 +333,8 @@ def main():
         print(f"No eligible {profile['ext']} files found to process.")
         return 0
 
-    failed = 0
+    transcode_failures = 0
+    cleanup_warnings = 0
     duplicate_skips = []
     active_tmp = None
     interrupted = False
@@ -367,7 +369,7 @@ def main():
                     fallback_reason = "retrying due to incompatible audio copy codec"
                     if not is_audio_copy_compat_failure(proc.stderr or ""):
                         print(ffmpeg_error_context(proc, src), file=sys.stderr)
-                        failed += 1
+                        transcode_failures += 1
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
@@ -379,21 +381,21 @@ def main():
                     proc = run(cmd)
                     if proc.returncode != 0:
                         print(ffmpeg_error_context(proc, src), file=sys.stderr)
-                        failed += 1
+                        transcode_failures += 1
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
                         continue
                 else:
                     print(ffmpeg_error_context(proc, src), file=sys.stderr)
-                    failed += 1
+                    transcode_failures += 1
                     if tmp.exists():
                         tmp.unlink()
                     active_tmp = None
                     continue
             if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
                 print(f"Error: Output verification failed for {src}", file=sys.stderr)
-                failed += 1
+                transcode_failures += 1
                 if tmp.exists():
                     tmp.unlink()
                 active_tmp = None
@@ -402,7 +404,7 @@ def main():
                 ina, outa = count_audio(src), count_audio(tmp)
                 if ina > 0 and outa < ina:
                     print(f"Error: Audio stream mismatch for {src}", file=sys.stderr)
-                    failed += 1
+                    transcode_failures += 1
                     tmp.unlink(missing_ok=True)
                     active_tmp = None
                     continue
@@ -410,7 +412,7 @@ def main():
                 tmp.replace(out)
             except Exception as e:
                 print(f"Error moving temporary output into place for {src}: {e}", file=sys.stderr)
-                failed += 1
+                transcode_failures += 1
                 tmp.unlink(missing_ok=True)
                 active_tmp = None
                 continue
@@ -423,18 +425,27 @@ def main():
                     f"Error deleting source after successful output finalize for {src}: {e}. Output kept at {out}.",
                     file=sys.stderr,
                 )
-                failed += 1
+                cleanup_warnings += 1
             active_tmp = None
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
-        failed += 1
+        transcode_failures += 1
     finally:
         if duplicate_skips:
             print("\nDuplicate-skip summary:", file=sys.stderr)
             for entry in duplicate_skips:
                 print(f"- {entry}", file=sys.stderr)
+        if cleanup_warnings:
+            print(
+                f"\nCleanup warning summary: {cleanup_warnings} source cleanup issue(s). Output files were kept.",
+                file=sys.stderr,
+            )
 
-    return 1 if failed or interrupted else 0
+    hard_failures = transcode_failures + (1 if interrupted else 0)
+    if args.strict_cleanup:
+        hard_failures += cleanup_warnings
+
+    return 1 if hard_failures > 0 else 0
 
 
 if __name__ == "__main__":

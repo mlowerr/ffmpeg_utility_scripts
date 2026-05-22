@@ -15,7 +15,8 @@ import sys
 from pathlib import Path
 from typing import List, Sequence
 
-FAILED_COUNT = 0
+TRANSCODE_FAILURES = 0
+CLEANUP_WARNINGS = 0
 TEMP_OUTPUT: Path | None = None
 
 
@@ -32,6 +33,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Limit ffmpeg/x265 thread usage (positive integer, software mode recommended)",
     )
+    parser.add_argument("--strict-cleanup", action="store_true", help="Treat source cleanup issues as hard failures")
     args = parser.parse_args()
     if args.threads < 0:
         parser.error("--threads must be zero or a positive integer")
@@ -125,7 +127,7 @@ def transcode_file(
     quality_opts: Sequence[str],
     threads: int,
 ) -> None:
-    global FAILED_COUNT, TEMP_OUTPUT
+    global TRANSCODE_FAILURES, CLEANUP_WARNINGS, TEMP_OUTPUT
 
     output = file_path.with_name(f"{file_path.stem}_HEVC.mkv")
     temp_output = file_path.with_name(f"{file_path.stem}_HEVC.tmp.mkv")
@@ -181,7 +183,7 @@ def transcode_file(
         print(f"Error: ffmpeg failed on '{file_path}'. Keeping source.", file=sys.stderr)
         if temp_output.exists():
             temp_output.unlink()
-        FAILED_COUNT += 1
+        TRANSCODE_FAILURES += 1
         TEMP_OUTPUT = None
         return
 
@@ -189,7 +191,7 @@ def transcode_file(
         print(f"Error: Temporary output '{temp_output}' is empty. Keeping source.", file=sys.stderr)
         if temp_output.exists():
             temp_output.unlink()
-        FAILED_COUNT += 1
+        TRANSCODE_FAILURES += 1
         TEMP_OUTPUT = None
         return
 
@@ -197,7 +199,7 @@ def transcode_file(
     if verify.returncode != 0:
         print(f"Error: Output verification failed for '{file_path}'. Keeping source.", file=sys.stderr)
         temp_output.unlink(missing_ok=True)
-        FAILED_COUNT += 1
+        TRANSCODE_FAILURES += 1
         TEMP_OUTPUT = None
         return
 
@@ -209,13 +211,20 @@ def transcode_file(
             file=sys.stderr,
         )
         temp_output.unlink(missing_ok=True)
-        FAILED_COUNT += 1
+        TRANSCODE_FAILURES += 1
         TEMP_OUTPUT = None
         return
 
     shutil.move(str(temp_output), str(output))
-    file_path.unlink()
-    print(f"Successfully transcoded '{file_path}' to '{output}'. Source deleted.")
+    try:
+        file_path.unlink()
+        print(f"Successfully transcoded '{file_path}' to '{output}'. Source deleted.")
+    except OSError as exc:
+        print(
+            f"Warning: source cleanup failed for '{file_path}': {exc}. Output kept at '{output}'.",
+            file=sys.stderr,
+        )
+        CLEANUP_WARNINGS += 1
     TEMP_OUTPUT = None
 
 
@@ -241,7 +250,17 @@ def main() -> int:
     for idx, file_path in enumerate(files, start=1):
         transcode_file(file_path, idx, total, video_codec, preset, quality_opts, args.threads)
 
-    return 1 if FAILED_COUNT > 0 else 0
+    if CLEANUP_WARNINGS > 0:
+        print(
+            f"\nCleanup warning summary: {CLEANUP_WARNINGS} source cleanup issue(s). Output files were kept.",
+            file=sys.stderr,
+        )
+
+    hard_failures = TRANSCODE_FAILURES
+    if args.strict_cleanup:
+        hard_failures += CLEANUP_WARNINGS
+
+    return 1 if hard_failures > 0 else 0
 
 
 if __name__ == "__main__":
