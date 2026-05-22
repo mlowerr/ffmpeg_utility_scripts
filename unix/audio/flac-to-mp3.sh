@@ -37,4 +37,4 @@ args+=(--hw "$HW")
 for d in "${SKIP_DIRS[@]}"; do
   args+=(--skip-dir "$d")
 done
-exec python3 "$(dirname "$0")/../cross-platform/transcode_cli.py" "${args[@]}"
+exec python3 "$(dirname "$0")/../../cross-platform/transcode_cli.py" "${args[@]}"

@@ -1,12 +1,6 @@
-# H.264 Transcode-All Driver Script
+# Audio Transcode-All Driver Script
 # =================================
-# Runs the AVI, FLV, MOV, MPG, WMV, and MP4 H.264 transcode scripts in order.
-#
-# USAGE:
-#   .\transcode_all.ps1           # Process current directory only
-#   .\transcode_all.ps1 -Recurse  # Process recursively from current directory
-#
-# The recursive flag is cascaded to each child script.
+# Runs FLAC and WAV to MP3 conversion scripts in order.
 
 param(
     [switch]$Recurse
@@ -14,8 +8,6 @@ param(
 
 $ErrorActionPreference = "Continue"
 $failedCount = 0
-# Resolve the driver location so child scripts are loaded next to this file,
-# even when the driver is invoked from another working directory.
 $scriptPath = if (-not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
     $PSCommandPath
 }
@@ -23,7 +15,7 @@ elseif ($MyInvocation.MyCommand.Path) {
     $MyInvocation.MyCommand.Path
 }
 else {
-    throw "Unable to determine transcode_all.ps1 script path."
+    throw "Unable to determine transcode_all_audio.ps1 script path."
 }
 $resolvedScriptPath = (Resolve-Path -LiteralPath $scriptPath).ProviderPath
 $scriptDir = Split-Path -Parent $resolvedScriptPath
@@ -72,12 +64,8 @@ function Invoke-ChildTranscodeScript {
     }
 }
 
-Invoke-ChildTranscodeScript -ScriptName "h264-avi-transcode.ps1"
-Invoke-ChildTranscodeScript -ScriptName "h264-flv-transcode.ps1"
-Invoke-ChildTranscodeScript -ScriptName "h264-mov-transcode.ps1"
-Invoke-ChildTranscodeScript -ScriptName "h264-mpg-transcode.ps1"
-Invoke-ChildTranscodeScript -ScriptName "h264-wmv-transcode.ps1"
-Invoke-ChildTranscodeScript -ScriptName "h264-transcode.ps1"
+Invoke-ChildTranscodeScript -ScriptName "flac-to-mp3.ps1"
+Invoke-ChildTranscodeScript -ScriptName "wav-to-mp3.ps1"
 
 if ($failedCount -gt 0) {
     exit 1
