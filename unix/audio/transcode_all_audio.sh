@@ -1,13 +1,7 @@
 #!/bin/bash
-# H.264 Transcode-All Driver Script
+# Audio Transcode-All Driver Script
 # =================================
-# Runs the AVI, FLV, MOV, MPG, WMV, and MP4 H.264 transcode scripts in order.
-#
-# USAGE:
-#   ./transcode_all.sh      # Process current directory only
-#   ./transcode_all.sh -r   # Process recursively from current directory
-#
-# The recursive flag is cascaded to each child script.
+# Runs FLAC and WAV to MP3 conversion scripts in order.
 
 set -u
 shopt -s nullglob nocaseglob
@@ -27,8 +21,6 @@ while getopts "rh" opt; do
     esac
 done
 
-# Resolve the driver location so child scripts are loaded next to this file,
-# even when the driver is invoked from another working directory or via symlink.
 resolve_script_dir() {
     local source="${BASH_SOURCE[0]}"
 
@@ -78,11 +70,7 @@ run_child_script() {
     fi
 }
 
-run_child_script "h264-avi-transcode.sh"
-run_child_script "h264-flv-transcode.sh"
-run_child_script "h264-mov-transcode.sh"
-run_child_script "h264-mpg-transcode.sh"
-run_child_script "h264-wmv-transcode.sh"
-run_child_script "h264-transcode.sh"
+run_child_script "flac-to-mp3.sh"
+run_child_script "wav-to-mp3.sh"
 
 exit $(( FAILED_COUNT > 0 ? 1 : 0 ))

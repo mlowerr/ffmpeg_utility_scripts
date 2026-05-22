@@ -4,7 +4,7 @@ if ($UseQuickSync) { $hw = "qsv" } elseif ($UseNVENC) { $hw = "nvenc" } elseif (
 $args = @("--profile", "h264_avi", "--hw", $hw)
 if ($Recurse) { $args += "--recurse" }
 if ($PSBoundParameters.ContainsKey("Threads")) { $args += @("--threads", $Threads) }
-$cliPath = Join-Path $PSScriptRoot "..\cross-platform\transcode_cli.py"
+$cliPath = Join-Path $PSScriptRoot "..\..\cross-platform\transcode_cli.py"
 if (Get-Command py -ErrorAction SilentlyContinue) {
     & py -3 $cliPath @args
 }

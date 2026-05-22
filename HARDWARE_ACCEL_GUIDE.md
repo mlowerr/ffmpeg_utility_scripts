@@ -70,14 +70,14 @@ ffmpeg -encoders 2>$null | Select-String "qsv"
 
 ```bash
 # Linux
-./unix/h264-transcode.sh -q
-./unix/h264-transcode.sh -r -q    # recursive
-./unix/hevc-transcode.sh -q
+./unix/video/h264-transcode.sh -q
+./unix/video/h264-transcode.sh -r -q    # recursive
+./unix/video/hevc-transcode.sh -q
 
 # Windows
-.\windows\h264-transcode.ps1 -UseQuickSync
-.\windows\h264-transcode.ps1 -Recurse -UseQuickSync
-.\windows\hevc-transcode.ps1 -UseQuickSync
+.\windows\video\h264-transcode.ps1 -UseQuickSync
+.\windows\video\h264-transcode.ps1 -Recurse -UseQuickSync
+.\windows\video\hevc-transcode.ps1 -UseQuickSync
 ```
 
 ---
@@ -120,14 +120,14 @@ ffmpeg -encoders 2>$null | Select-String "nvenc"
 
 ```bash
 # Linux
-./unix/h264-transcode.sh -n
-./unix/h264-transcode.sh -r -n    # recursive
-./unix/hevc-transcode.sh -n
+./unix/video/h264-transcode.sh -n
+./unix/video/h264-transcode.sh -r -n    # recursive
+./unix/video/hevc-transcode.sh -n
 
 # Windows
-.\windows\h264-transcode.ps1 -UseNVENC
-.\windows\h264-transcode.ps1 -Recurse -UseNVENC
-.\windows\hevc-transcode.ps1 -UseNVENC
+.\windows\video\h264-transcode.ps1 -UseNVENC
+.\windows\video\h264-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\hevc-transcode.ps1 -UseNVENC
 ```
 
 ---
@@ -170,14 +170,14 @@ ffmpeg -encoders 2>$null | Select-String "amf"
 
 ```bash
 # Linux
-./unix/h264-transcode.sh -a
-./unix/h264-transcode.sh -r -a    # recursive
-./unix/hevc-transcode.sh -a
+./unix/video/h264-transcode.sh -a
+./unix/video/h264-transcode.sh -r -a    # recursive
+./unix/video/hevc-transcode.sh -a
 
 # Windows
-.\windows\h264-transcode.ps1 -UseAMF
-.\windows\h264-transcode.ps1 -Recurse -UseAMF
-.\windows\hevc-transcode.ps1 -UseAMF
+.\windows\video\h264-transcode.ps1 -UseAMF
+.\windows\video\h264-transcode.ps1 -Recurse -UseAMF
+.\windows\video\hevc-transcode.ps1 -UseAMF
 ```
 
 ---
