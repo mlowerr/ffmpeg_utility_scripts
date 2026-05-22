@@ -103,7 +103,25 @@ def effective_quality(profile_name: str, profile: dict, config: dict, cli_qualit
 
 
 def run(cmd):
-    return subprocess.run(cmd).returncode == 0
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def is_audio_copy_compat_failure(stderr: str):
+    normalized = stderr.lower()
+    signatures = (
+        "could not find tag for codec",
+        "codec not currently supported in container",
+        "unsupported codec",
+        "invalid argument",
+    )
+    return any(sig in normalized for sig in signatures)
+
+
+def ffmpeg_error_context(proc, src: Path):
+    detail = (proc.stderr or "").strip()
+    if not detail:
+        detail = "No stderr output from ffmpeg."
+    return f"Error: ffmpeg failed on {src}\n{detail}"
 
 
 def out_name(p: Path, profile):
@@ -213,7 +231,7 @@ def build_audio_cmd(src, tmp):
 
 
 def ffprobe_ok(path):
-    return run(["ffprobe", "-v", "error", str(path)])
+    return run(["ffprobe", "-v", "error", str(path)]).returncode == 0
 
 
 def count_audio(path):
@@ -343,21 +361,31 @@ def main():
             if tmp.exists():
                 tmp.unlink()
             cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
-            if not run(cmd):
+            proc = run(cmd)
+            if proc.returncode != 0:
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
-                    print(f"Audio copy failed for {src}; retrying with AAC audio fallback.")
+                    fallback_reason = "retrying due to incompatible audio copy codec"
+                    if not is_audio_copy_compat_failure(proc.stderr or ""):
+                        print(ffmpeg_error_context(proc, src), file=sys.stderr)
+                        failed += 1
+                        if tmp.exists():
+                            tmp.unlink()
+                        active_tmp = None
+                        continue
+                    print(f"Audio copy failed for {src}; {fallback_reason}.")
                     if tmp.exists():
                         tmp.unlink()
                     cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality, force_aac=True)
-                    if not run(cmd):
-                        print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+                    proc = run(cmd)
+                    if proc.returncode != 0:
+                        print(ffmpeg_error_context(proc, src), file=sys.stderr)
                         failed += 1
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
                         continue
                 else:
-                    print(f"Error: ffmpeg failed on {src}", file=sys.stderr)
+                    print(ffmpeg_error_context(proc, src), file=sys.stderr)
                     failed += 1
                     if tmp.exists():
                         tmp.unlink()
