@@ -8,19 +8,36 @@ Cross-platform FFmpeg utility scripts that convert video files to H.264 or HEVC/
 ```
 ffmpeg_utility_scripts/
 ├── cross-platform/
-│   └── hevc-mkv-transcode.py # HEVC/H.265 MKV transcoding (Python)
+│   ├── transcode_cli.py          # Shared transcoding CLI used by shell/PS wrappers
+│   ├── hevc-mkv-transcode.py     # HEVC/H.265 MKV transcoding (Python)
+│   ├── file-type-report.py       # File type counting utility
+│   ├── files-by-extension.py     # Extension path listing utility
+│   ├── recursive-file-type-report.py # Per-folder type reports
+│   └── dedup-refactor-plan.md    # Internal architecture/refactor plan
 ├── unix/
-│   ├── flac-to-mp3.sh       # FLAC to 256k MP3 (Bash)
-│   ├── h264-transcode.sh    # H.264 transcoding (Bash)
-│   ├── h264-wmv-transcode.sh # H.264 WMV transcoding (Bash)
-│   ├── hevc-transcode.sh    # HEVC/H.265 transcoding (Bash)
-│   └── wav-to-mp3.sh        # WAV to 256k MP3 (Bash)
+│   ├── h264-transcode.sh         # H.264 MP4 transcoding wrapper (Bash)
+│   ├── h264-avi-transcode.sh     # H.264 AVI transcoding wrapper (Bash)
+│   ├── h264-mov-transcode.sh     # H.264 MOV transcoding wrapper (Bash)
+│   ├── h264-mpg-transcode.sh     # H.264 MPG transcoding wrapper (Bash)
+│   ├── h264-flv-transcode.sh     # H.264 FLV transcoding wrapper (Bash)
+│   ├── h264-wmv-transcode.sh     # H.264 WMV transcoding wrapper (Bash)
+│   ├── hevc-transcode.sh         # HEVC/H.265 MP4 transcoding wrapper (Bash)
+│   ├── hevc-mkv-transcode.sh     # HEVC/H.265 MKV transcoding wrapper (Bash)
+│   ├── flac-to-mp3.sh            # FLAC to 256k MP3 wrapper (Bash)
+│   ├── wav-to-mp3.sh             # WAV to 256k MP3 wrapper (Bash)
+│   └── transcode_all.sh          # Batch wrapper for legacy H.264 inputs
 └── windows/
-    ├── flac-to-mp3.ps1      # FLAC to 256k MP3 (PowerShell)
-    ├── h264-transcode.ps1   # H.264 transcoding (PowerShell)
-    ├── h264-wmv-transcode.ps1 # H.264 WMV transcoding (PowerShell)
-    ├── hevc-transcode.ps1   # HEVC transcoding (PowerShell)
-    └── wav-to-mp3.ps1       # WAV to 256k MP3 (PowerShell)
+    ├── h264-transcode.ps1        # H.264 MP4 transcoding wrapper (PowerShell)
+    ├── h264-avi-transcode.ps1    # H.264 AVI transcoding wrapper (PowerShell)
+    ├── h264-mov-transcode.ps1    # H.264 MOV transcoding wrapper (PowerShell)
+    ├── h264-mpg-transcode.ps1    # H.264 MPG transcoding wrapper (PowerShell)
+    ├── h264-flv-transcode.ps1    # H.264 FLV transcoding wrapper (PowerShell)
+    ├── h264-wmv-transcode.ps1    # H.264 WMV transcoding wrapper (PowerShell)
+    ├── hevc-transcode.ps1        # HEVC/H.265 MP4 transcoding wrapper (PowerShell)
+    ├── hevc-mkv-transcode.ps1    # HEVC/H.265 MKV transcoding wrapper (PowerShell)
+    ├── flac-to-mp3.ps1           # FLAC to 256k MP3 wrapper (PowerShell)
+    ├── wav-to-mp3.ps1            # WAV to 256k MP3 wrapper (PowerShell)
+    └── transcode_all.ps1         # Batch wrapper for legacy H.264 inputs
 ```
 
 ## Critical Coding Standards
