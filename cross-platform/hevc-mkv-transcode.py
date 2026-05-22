@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Iterable, List, Sequence
 
 FAILED_COUNT = 0
+CLEANUP_WARNING_COUNT = 0
 TEMP_OUTPUT: Path | None = None
 
 
@@ -31,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Limit ffmpeg/x265 thread usage (positive integer, software mode recommended)",
+    )
+    parser.add_argument(
+        "--strict-cleanup",
+        action="store_true",
+        help="Treat source cleanup problems as failures (default: warning only).",
     )
     args = parser.parse_args()
     if args.threads < 0:
@@ -120,7 +126,7 @@ def transcode_file(
     quality_opts: Sequence[str],
     threads: int,
 ) -> None:
-    global FAILED_COUNT, TEMP_OUTPUT
+    global FAILED_COUNT, CLEANUP_WARNING_COUNT, TEMP_OUTPUT
 
     output = file_path.with_name(f"{file_path.stem}_HEVC.mkv")
     temp_output = file_path.with_name(f"{file_path.stem}_HEVC.tmp.mkv")
@@ -209,8 +215,15 @@ def transcode_file(
         return
 
     shutil.move(str(temp_output), str(output))
-    file_path.unlink()
-    print(f"Successfully transcoded '{file_path}' to '{output}'. Source deleted.")
+    try:
+        file_path.unlink()
+        print(f"Successfully transcoded '{file_path}' to '{output}'. Source deleted.")
+    except OSError as exc:
+        print(
+            f"Warning: output finalized at '{output}', but failed to delete source '{file_path}': {exc}",
+            file=sys.stderr,
+        )
+        CLEANUP_WARNING_COUNT += 1
     TEMP_OUTPUT = None
 
 
@@ -236,7 +249,14 @@ def main() -> int:
     for idx, file_path in enumerate(files, start=1):
         transcode_file(file_path, idx, total, video_codec, preset, quality_opts, args.threads)
 
-    return 1 if FAILED_COUNT > 0 else 0
+    if CLEANUP_WARNING_COUNT > 0:
+        print(f"\nCleanup warning summary: {CLEANUP_WARNING_COUNT} source cleanup issue(s).", file=sys.stderr)
+
+    if FAILED_COUNT > 0:
+        return 1
+    if args.strict_cleanup and CLEANUP_WARNING_COUNT > 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

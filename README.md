@@ -296,6 +296,13 @@ For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logi
 - ✓ Handles filenames with spaces safely
 - ✓ Validates file paths to prevent injection attacks
 
+## Exit Codes
+
+- `0`: No hard transcode failures occurred. This includes runs where cleanup warnings (for example, source delete failures after output finalize) were encountered.
+- `1`: One or more hard transcode failures occurred.
+
+For `cross-platform/transcode_cli.py` and `cross-platform/hevc-mkv-transcode.py`, pass `--strict-cleanup` to make cleanup warnings return exit code `1`.
+
 ## Encoding Settings
 
 | Setting | Software | Intel QSV | NVIDIA NVENC | AMD AMF |
