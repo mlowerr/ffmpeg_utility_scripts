@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path]"; exit 1 ;;
   esac
 done
-args=(--profile hevc_mp4)
+args=(--profile h264_mp4)
 [[ "$RECURSE" == true ]] && args+=(--recurse)
 args+=(--hw "$HW")
 [[ -n "$THREADS" ]] && args+=(--threads "$THREADS")
@@ -37,4 +37,4 @@ args+=(--hw "$HW")
 for d in "${SKIP_DIRS[@]}"; do
   args+=(--skip-dir "$d")
 done
-exec python3 "$(dirname "$0")/../cross-platform/transcode_cli.py" "${args[@]}"
+exec python3 "$(dirname "$0")/../../cross-platform/transcode_cli.py" "${args[@]}"

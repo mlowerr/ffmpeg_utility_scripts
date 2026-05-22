@@ -25,25 +25,35 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── recursive-file-type-report.py # Per-folder type reports (Python, cross-platform)
 │   └── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
 ├── unix/
-│   ├── flac-to-mp3.sh             # FLAC to 256k MP3 (Bash)
-│   ├── h264-transcode.sh          # H.264 encoding for MP4 (Bash)
-│   ├── h264-avi-transcode.sh      # H.264 encoding for AVI (Bash)
-│   ├── h264-mov-transcode.sh      # H.264 encoding for MOV (Bash)
-│   ├── h264-wmv-transcode.sh      # H.264 encoding for WMV (Bash)
-│   ├── transcode_all.sh           # Run AVI, FLV, MOV, MPG, WMV, then MP4 H.264 workflows (Bash)
-│   ├── hevc-transcode.sh          # HEVC/H.265 encoding for MP4 (Bash)
-│   ├── hevc-mkv-transcode.sh      # HEVC/H.265 encoding for MKV (Bash)
-│   └── wav-to-mp3.sh              # WAV to 256k MP3 (Bash)
+│   ├── video/
+│   │   ├── h264-transcode.sh
+│   │   ├── h264-avi-transcode.sh
+│   │   ├── h264-mov-transcode.sh
+│   │   ├── h264-mpg-transcode.sh
+│   │   ├── h264-flv-transcode.sh
+│   │   ├── h264-wmv-transcode.sh
+│   │   ├── hevc-transcode.sh
+│   │   ├── hevc-mkv-transcode.sh
+│   │   └── transcode_all_video.sh
+│   └── audio/
+│       ├── flac-to-mp3.sh
+│       ├── wav-to-mp3.sh
+│       └── transcode_all_audio.sh
 ├── windows/
-│   ├── flac-to-mp3.ps1            # FLAC to 256k MP3 (PowerShell)
-│   ├── h264-transcode.ps1         # H.264 encoding for MP4 (PowerShell)
-│   ├── h264-avi-transcode.ps1     # H.264 encoding for AVI (PowerShell)
-│   ├── h264-mov-transcode.ps1     # H.264 encoding for MOV (PowerShell)
-│   ├── h264-wmv-transcode.ps1     # H.264 encoding for WMV (PowerShell)
-│   ├── transcode_all.ps1          # Run AVI, FLV, MOV, MPG, WMV, then MP4 H.264 workflows (PowerShell)
-│   ├── hevc-transcode.ps1         # HEVC/H.265 encoding for MP4 (PowerShell)
-│   ├── hevc-mkv-transcode.ps1     # HEVC/H.265 encoding for MKV (PowerShell)
-│   └── wav-to-mp3.ps1             # WAV to 256k MP3 (PowerShell)
+│   ├── video/
+│   │   ├── h264-transcode.ps1
+│   │   ├── h264-avi-transcode.ps1
+│   │   ├── h264-mov-transcode.ps1
+│   │   ├── h264-mpg-transcode.ps1
+│   │   ├── h264-flv-transcode.ps1
+│   │   ├── h264-wmv-transcode.ps1
+│   │   ├── hevc-transcode.ps1
+│   │   ├── hevc-mkv-transcode.ps1
+│   │   └── transcode_all_video.ps1
+│   └── audio/
+│       ├── flac-to-mp3.ps1
+│       ├── wav-to-mp3.ps1
+│       └── transcode_all_audio.ps1
 ├── HARDWARE_ACCEL_GUIDE.md        # Hardware acceleration setup guide
 └── README.md                      # This file
 ```
@@ -114,36 +124,36 @@ Process supported video files in the current directory:
 
 ```bash
 # Linux/macOS - H.264 encoding
-./unix/h264-transcode.sh      # MP4 input
-./unix/h264-avi-transcode.sh  # AVI input
-./unix/h264-mov-transcode.sh  # MOV input
-./unix/h264-mpg-transcode.sh  # MPG input
-./unix/h264-flv-transcode.sh  # FLV input
-./unix/h264-wmv-transcode.sh  # WMV input
-./unix/transcode_all.sh        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
+./unix/video/h264-transcode.sh      # MP4 input
+./unix/video/h264-avi-transcode.sh  # AVI input
+./unix/video/h264-mov-transcode.sh  # MOV input
+./unix/video/h264-mpg-transcode.sh  # MPG input
+./unix/video/h264-flv-transcode.sh  # FLV input
+./unix/video/h264-wmv-transcode.sh  # WMV input
+./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
 
 # Linux/macOS - HEVC encoding
-./unix/hevc-transcode.sh
+./unix/video/hevc-transcode.sh
 
 # Windows - H.264 encoding (PowerShell)
-.\windows\h264-transcode.ps1      # MP4 input
-.\windows\h264-avi-transcode.ps1  # AVI input
-.\windows\h264-mov-transcode.ps1  # MOV input
-.\windows\h264-mpg-transcode.ps1  # MPG input
-.\windows\h264-flv-transcode.ps1  # FLV input
-.\windows\h264-wmv-transcode.ps1  # WMV input
-.\windows\transcode_all.ps1        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
+.\windows\video\h264-transcode.ps1      # MP4 input
+.\windows\video\h264-avi-transcode.ps1  # AVI input
+.\windows\video\h264-mov-transcode.ps1  # MOV input
+.\windows\video\h264-mpg-transcode.ps1  # MPG input
+.\windows\video\h264-flv-transcode.ps1  # FLV input
+.\windows\video\h264-wmv-transcode.ps1  # WMV input
+.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
 
 # Windows - HEVC encoding (PowerShell)
-.\windows\hevc-transcode.ps1
+.\windows\video\hevc-transcode.ps1
 
 # Linux/macOS - HEVC encoding (MKV input/output)
-./unix/hevc-mkv-transcode.sh
-./unix/hevc-mkv-transcode.sh -t 8
+./unix/video/hevc-mkv-transcode.sh
+./unix/video/hevc-mkv-transcode.sh -t 8
 
 # Windows - HEVC encoding (MKV input/output)
-.\windows\hevc-mkv-transcode.ps1
-.\windows\hevc-mkv-transcode.ps1 -Threads 8
+.\windows\video\hevc-mkv-transcode.ps1
+.\windows\video\hevc-mkv-transcode.ps1 -Threads 8
 
 # Cross-platform Python - HEVC encoding (MKV input/output)
 python3 ./cross-platform/hevc-mkv-transcode.py
@@ -155,12 +165,14 @@ python3 ./cross-platform/files-by-extension.py /path/to/media mp4
 python3 ./cross-platform/recursive-file-type-report.py /path/to/media
 
 # Linux/macOS - Audio conversion to 256k MP3
-./unix/flac-to-mp3.sh
-./unix/wav-to-mp3.sh
+./unix/audio/flac-to-mp3.sh
+./unix/audio/wav-to-mp3.sh
+./unix/audio/transcode_all_audio.sh
 
 # Windows - Audio conversion to 256k MP3
-.\windows\flac-to-mp3.ps1
-.\windows\wav-to-mp3.ps1
+.\windows\audio\flac-to-mp3.ps1
+.\windows\audio\wav-to-mp3.ps1
+.\windows\audio\transcode_all_audio.ps1
 ```
 
 ### Recursive Processing
@@ -169,32 +181,34 @@ Process supported video files from the current directory downward:
 
 ```bash
 # Linux/macOS
-./unix/h264-transcode.sh -r
-./unix/h264-avi-transcode.sh -r
-./unix/h264-mov-transcode.sh -r
-./unix/h264-mpg-transcode.sh -r
-./unix/h264-flv-transcode.sh -r
-./unix/h264-wmv-transcode.sh -r
-./unix/transcode_all.sh -r
-./unix/hevc-transcode.sh -r
-./unix/hevc-mkv-transcode.sh -r
-./unix/hevc-mkv-transcode.sh -r -t 8
-./unix/flac-to-mp3.sh -r
-./unix/wav-to-mp3.sh -r
+./unix/video/h264-transcode.sh -r
+./unix/video/h264-avi-transcode.sh -r
+./unix/video/h264-mov-transcode.sh -r
+./unix/video/h264-mpg-transcode.sh -r
+./unix/video/h264-flv-transcode.sh -r
+./unix/video/h264-wmv-transcode.sh -r
+./unix/video/transcode_all_video.sh -r
+./unix/video/hevc-transcode.sh -r
+./unix/video/hevc-mkv-transcode.sh -r
+./unix/video/hevc-mkv-transcode.sh -r -t 8
+./unix/audio/flac-to-mp3.sh -r
+./unix/audio/wav-to-mp3.sh -r
+./unix/audio/transcode_all_audio.sh -r
 
 # Windows
-.\windows\h264-transcode.ps1 -Recurse
-.\windows\h264-avi-transcode.ps1 -Recurse
-.\windows\h264-mov-transcode.ps1 -Recurse
-.\windows\h264-mpg-transcode.ps1 -Recurse
-.\windows\h264-flv-transcode.ps1 -Recurse
-.\windows\h264-wmv-transcode.ps1 -Recurse
-.\windows\transcode_all.ps1 -Recurse
-.\windows\hevc-transcode.ps1 -Recurse
-.\windows\hevc-mkv-transcode.ps1 -Recurse
-.\windows\hevc-mkv-transcode.ps1 -Recurse -Threads 8
-.\windows\flac-to-mp3.ps1 -Recurse
-.\windows\wav-to-mp3.ps1 -Recurse
+.\windows\video\h264-transcode.ps1 -Recurse
+.\windows\video\h264-avi-transcode.ps1 -Recurse
+.\windows\video\h264-mov-transcode.ps1 -Recurse
+.\windows\video\h264-mpg-transcode.ps1 -Recurse
+.\windows\video\h264-flv-transcode.ps1 -Recurse
+.\windows\video\h264-wmv-transcode.ps1 -Recurse
+.\windows\video\transcode_all_video.ps1 -Recurse
+.\windows\video\hevc-transcode.ps1 -Recurse
+.\windows\video\hevc-mkv-transcode.ps1 -Recurse
+.\windows\video\hevc-mkv-transcode.ps1 -Recurse -Threads 8
+.\windows\audio\flac-to-mp3.ps1 -Recurse
+.\windows\audio\wav-to-mp3.ps1 -Recurse
+.\windows\audio\transcode_all_audio.ps1 -Recurse
 python3 ./cross-platform/hevc-mkv-transcode.py --recurse
 python3 ./cross-platform/hevc-mkv-transcode.py --recurse --threads 8
 python3 ./cross-platform/file-type-report.py --recursive /path/to/media
@@ -218,33 +232,33 @@ Use hardware encoders for significantly faster processing (2-10x speedup):
 
 ```bash
 # Linux/macOS with Intel Quick Sync
-./unix/h264-transcode.sh -r -q
-./unix/h264-avi-transcode.sh -r -q
-./unix/h264-mov-transcode.sh -r -q
-./unix/h264-mpg-transcode.sh -r -q
-./unix/h264-flv-transcode.sh -r -q
-./unix/h264-wmv-transcode.sh -r -q
-./unix/hevc-transcode.sh -q
-./unix/hevc-mkv-transcode.sh -q
+./unix/video/h264-transcode.sh -r -q
+./unix/video/h264-avi-transcode.sh -r -q
+./unix/video/h264-mov-transcode.sh -r -q
+./unix/video/h264-mpg-transcode.sh -r -q
+./unix/video/h264-flv-transcode.sh -r -q
+./unix/video/h264-wmv-transcode.sh -r -q
+./unix/video/hevc-transcode.sh -q
+./unix/video/hevc-mkv-transcode.sh -q
 
 # Linux/macOS with NVIDIA GPU
-./unix/h264-transcode.sh -r -n
-./unix/h264-avi-transcode.sh -r -n
-./unix/h264-mov-transcode.sh -r -n
-./unix/h264-mpg-transcode.sh -r -n
-./unix/h264-flv-transcode.sh -r -n
-./unix/h264-wmv-transcode.sh -r -n
-./unix/hevc-transcode.sh -n
+./unix/video/h264-transcode.sh -r -n
+./unix/video/h264-avi-transcode.sh -r -n
+./unix/video/h264-mov-transcode.sh -r -n
+./unix/video/h264-mpg-transcode.sh -r -n
+./unix/video/h264-flv-transcode.sh -r -n
+./unix/video/h264-wmv-transcode.sh -r -n
+./unix/video/hevc-transcode.sh -n
 
 # Windows with NVIDIA GPU
-.\windows\h264-transcode.ps1 -Recurse -UseNVENC
-.\windows\h264-avi-transcode.ps1 -Recurse -UseNVENC
-.\windows\h264-mov-transcode.ps1 -Recurse -UseNVENC
-.\windows\h264-mpg-transcode.ps1 -Recurse -UseNVENC
-.\windows\h264-flv-transcode.ps1 -Recurse -UseNVENC
-.\windows\h264-wmv-transcode.ps1 -Recurse -UseNVENC
-.\windows\hevc-transcode.ps1 -UseNVENC
-.\windows\hevc-mkv-transcode.ps1 -UseNVENC
+.\windows\video\h264-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-avi-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-mov-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-mpg-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-flv-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-wmv-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\hevc-transcode.ps1 -UseNVENC
+.\windows\video\hevc-mkv-transcode.ps1 -UseNVENC
 python3 .\cross-platform\hevc-mkv-transcode.py --nvenc
 ```
 
@@ -283,7 +297,6 @@ Example config:
 Invalid config quality values now fail gracefully with an `Error: ...` message (same `0..51` validation as CLI quality).
 
 
-For upcoming cross-platform refactoring of duplicated Unix/Windows workflow logic, see [cross-platform/dedup-refactor-plan.md](cross-platform/dedup-refactor-plan.md).
 
 ## How It Works
 
