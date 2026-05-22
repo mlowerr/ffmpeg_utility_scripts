@@ -114,7 +114,7 @@ def is_audio_copy_compat_failure(stderr: str):
         "unsupported codec",
         "invalid argument",
     )
-    return any(sig in normalized for sig in signatures) and "audio" in normalized
+    return any(sig in normalized for sig in signatures)
 
 
 def ffmpeg_error_context(proc, src: Path):
