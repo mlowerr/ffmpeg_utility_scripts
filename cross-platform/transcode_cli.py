@@ -31,8 +31,10 @@ def default_config_path():
     return base / "ffmpeg-utility-scripts" / "config.json"
 
 
-def load_user_config(config_path: Path):
+def load_user_config(config_path: Path, required: bool = False):
     if not config_path.exists():
+        if required:
+            raise ValueError(f"config file does not exist: {config_path}")
         return {}
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
@@ -75,7 +77,7 @@ def should_skip_file(file_path: Path, skip_dirs):
 
 
 def validate_quality_value(value, label):
-    if not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{label} must be an integer")
     if not (0 <= value <= 51):
         raise ValueError(f"{label} must be between 0 and 51")
@@ -274,7 +276,7 @@ def main():
 
     config_path = Path(args.config).expanduser().resolve() if args.config else default_config_path()
     try:
-        config = load_user_config(config_path)
+        config = load_user_config(config_path, required=bool(args.config))
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
