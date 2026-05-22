@@ -64,22 +64,26 @@ def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
     return video_codec, preset, quality_opts
 
 
-def rename_files(files: Iterable[Path]) -> None:
+def rename_files(files: Iterable[Path]) -> int:
+    cleanup_warnings = 0
     for file_path in files:
         if " " not in file_path.name:
             continue
         new_path = file_path.with_name(file_path.name.replace(" ", "_"))
         if new_path.exists():
             print(f"Warning: skipping rename '{file_path}' -> '{new_path}' (target exists)", file=sys.stderr)
+            cleanup_warnings += 1
             continue
         file_path.rename(new_path)
         print(f"Renamed: '{file_path}' -> '{new_path}'")
+    return cleanup_warnings
 
 
 def collect_files(root: Path, recurse: bool) -> List[Path]:
+    global CLEANUP_WARNING_COUNT
     discovery = root.rglob("*") if recurse else root.glob("*")
     candidates = [p for p in discovery if p.is_file() and p.suffix.lower() == ".mkv"]
-    rename_files(candidates)
+    CLEANUP_WARNING_COUNT += rename_files(candidates)
 
     refresh_discovery = root.rglob("*") if recurse else root.glob("*")
     files_to_process: List[Path] = []

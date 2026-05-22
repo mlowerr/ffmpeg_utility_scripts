@@ -225,18 +225,18 @@ def count_audio(path):
 
 def normalize_input_name(path: Path):
     if " " not in path.name:
-        return path, False
+        return path, False, False
     normalized = path.with_name(path.name.replace(" ", "_"))
     if normalized.exists():
         print(f"Warning: Cannot rename {path} -> {normalized} (target exists).", file=sys.stderr)
-        return path, False
+        return path, False, True
     try:
         path.replace(normalized)
         print(f"Renamed {path} -> {normalized}")
-        return normalized, True
+        return normalized, True, False
     except OSError as exc:
         print(f"Warning: Failed to rename {path} -> {normalized}: {exc}", file=sys.stderr)
-        return path, False
+        return path, False, True
 
 
 def main():
@@ -334,7 +334,9 @@ def main():
     try:
         for i, original_src in enumerate(candidates, 1):
             print(f"\n\nProcessing file {i} of {len(candidates)}\n")
-            src, _ = normalize_input_name(original_src)
+            src, _, rename_warning = normalize_input_name(original_src)
+            if rename_warning:
+                cleanup_warnings += 1
             out, tmp = out_name(src, profile)
             if out.exists():
                 msg = f"Skipping {src}: converted output already exists at {out} (possible duplicate after normalization)."
