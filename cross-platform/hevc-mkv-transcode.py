@@ -13,7 +13,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import List, Sequence
 
 FAILED_COUNT = 0
 TEMP_OUTPUT: Path | None = None
@@ -58,34 +58,31 @@ def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
     return video_codec, preset, quality_opts
 
 
-def rename_files(files: Iterable[Path]) -> None:
-    for file_path in files:
-        if " " not in file_path.name:
-            continue
-        new_path = file_path.with_name(file_path.name.replace(" ", "_"))
-        if new_path.exists():
-            print(f"Warning: skipping rename '{file_path}' -> '{new_path}' (target exists)", file=sys.stderr)
-            continue
-        file_path.rename(new_path)
-        print(f"Renamed: '{file_path}' -> '{new_path}'")
-
-
 def collect_files(root: Path, recurse: bool) -> List[Path]:
     discovery = root.rglob("*") if recurse else root.glob("*")
-    candidates = [p for p in discovery if p.is_file() and p.suffix.lower() == ".mkv"]
-    rename_files(candidates)
-
-    refresh_discovery = root.rglob("*") if recurse else root.glob("*")
     files_to_process: List[Path] = []
-    for file_path in refresh_discovery:
+    for file_path in discovery:
         if not file_path.is_file() or file_path.suffix.lower() != ".mkv":
             continue
-        if file_path.name.lower().endswith("_hevc.mkv"):
+        current_path = file_path
+        if " " in current_path.name:
+            renamed_path = current_path.with_name(current_path.name.replace(" ", "_"))
+            if renamed_path.exists():
+                print(
+                    f"Warning: skipping rename '{current_path}' -> '{renamed_path}' (target exists)",
+                    file=sys.stderr,
+                )
+            else:
+                current_path.rename(renamed_path)
+                print(f"Renamed: '{current_path}' -> '{renamed_path}'")
+                current_path = renamed_path
+
+        if current_path.name.lower().endswith("_hevc.mkv"):
             continue
-        output = file_path.with_name(f"{file_path.stem}_HEVC.mkv")
+        output = current_path.with_name(f"{current_path.stem}_HEVC.mkv")
         if output.exists():
             continue
-        files_to_process.append(file_path)
+        files_to_process.append(current_path)
     return files_to_process
 
 
