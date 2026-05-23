@@ -261,19 +261,19 @@ fi
 
 ### Syntax Validation
 ```bash
-bash -n unix/h264-transcode.sh
-bash -n unix/hevc-transcode.sh
-bash -n unix/flac-to-mp3.sh
-bash -n unix/wav-to-mp3.sh
+bash -n unix/video/h264-transcode.sh
+bash -n unix/video/hevc-transcode.sh
+bash -n unix/audio/flac-to-mp3.sh
+bash -n unix/audio/wav-to-mp3.sh
 python3 -m py_compile cross-platform/hevc-mkv-transcode.py
 ```
 
 ### ShellCheck
 ```bash
-shellcheck unix/h264-transcode.sh
-shellcheck unix/hevc-transcode.sh
-shellcheck unix/flac-to-mp3.sh
-shellcheck unix/wav-to-mp3.sh
+shellcheck unix/video/h264-transcode.sh
+shellcheck unix/video/hevc-transcode.sh
+shellcheck unix/audio/flac-to-mp3.sh
+shellcheck unix/audio/wav-to-mp3.sh
 ```
 
 ### Test Scenarios
@@ -352,7 +352,7 @@ done
 
 
 #### 11. Wrapper Option Forwarding
-For `transcode_cli.py`-backed wrappers (`unix/*-transcode.sh`, `unix/*-to-mp3.sh`, and matching `windows/*.ps1` scripts):
+For `transcode_cli.py`-backed wrappers (`unix/video/*-transcode.sh`, `unix/audio/*-to-mp3.sh`, and matching `windows/video/*.ps1` + `windows/audio/*.ps1` scripts):
 - Support forwarding for `--quality`/`-Quality`, `--skip-dir`/`-SkipDir`, and `--config`/`-ConfigPath` where implemented.
 - Under Bash `set -u`, always guard option values before reading positional `$2` (for example, `--quality`, `--skip-dir`, `--config`, and `--threads`) and emit a controlled usage error when missing.
 - Config-provided quality values must be validated to the same range as CLI quality (`0..51`) and reported as `Error: ...` without traceback.
