@@ -7,19 +7,15 @@ set -u
 shopt -s nullglob nocaseglob
 
 FAILED_COUNT=0
-RECURSE=false
 
 usage() {
-    echo "Usage: $0 [-r]"
+    echo "Usage: $0 [-r] [additional wrapper options]"
 }
 
-while getopts "rh" opt; do
-    case "$opt" in
-        r) RECURSE=true ;;
-        h) usage; exit 0 ;;
-        *) usage; exit 1 ;;
-    esac
-done
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
 
 resolve_script_dir() {
     local source="${BASH_SOURCE[0]}"
@@ -40,10 +36,7 @@ resolve_script_dir() {
 script_dir=""
 script_dir=$(resolve_script_dir)
 
-child_args=()
-if [[ "$RECURSE" == true ]]; then
-    child_args=(-r)
-fi
+child_args=("$@")
 
 run_child_script() {
     local script_name="$1"

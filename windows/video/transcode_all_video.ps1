@@ -9,7 +9,8 @@
 # The recursive flag is cascaded to each child script.
 
 param(
-    [switch]$Recurse
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ForwardArgs = @()
 )
 
 $ErrorActionPreference = "Continue"
@@ -37,10 +38,7 @@ else {
     "powershell"
 }
 
-$childArgs = @()
-if ($Recurse) {
-    $childArgs += "-Recurse"
-}
+$childArgs = @($ForwardArgs)
 
 function Invoke-ChildTranscodeScript {
     param(

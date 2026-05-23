@@ -3,7 +3,8 @@
 # Runs FLAC and WAV to MP3 conversion scripts in order.
 
 param(
-    [switch]$Recurse
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ForwardArgs = @()
 )
 
 $ErrorActionPreference = "Continue"
@@ -29,10 +30,7 @@ else {
     "powershell"
 }
 
-$childArgs = @()
-if ($Recurse) {
-    $childArgs += "-Recurse"
-}
+$childArgs = @($ForwardArgs)
 
 function Invoke-ChildTranscodeScript {
     param(
