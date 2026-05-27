@@ -366,7 +366,7 @@ def main():
             cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
             proc = run(cmd)
             if proc.returncode != 0:
-                if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".wmv"}:
+                if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".rm", ".wmv"}:
                     fallback_reason = "retrying due to incompatible audio copy codec"
                     if not is_audio_copy_compat_failure(proc.stderr or ""):
                         print(ffmpeg_error_context(proc, src), file=sys.stderr)
