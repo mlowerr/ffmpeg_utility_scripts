@@ -21,10 +21,10 @@ while [[ $# -gt 0 ]]; do
     -q) HW="qsv"; shift ;;
     -n) HW="nvenc"; shift ;;
     -a) HW="amf"; shift ;;
-    -t|--threads) need_value "$1" "$2"; THREADS="$2"; shift 2 ;;
-    --quality) need_value "$1" "$2"; QUALITY="$2"; shift 2 ;;
-    --config) need_value "$1" "$2"; CONFIG="$2"; shift 2 ;;
-    --skip-dir) need_value "$1" "$2"; SKIP_DIRS+=("$2"); shift 2 ;;
+    -t|--threads) need_value "$1" "${2-}"; THREADS="$2"; shift 2 ;;
+    --quality) need_value "$1" "${2-}"; QUALITY="$2"; shift 2 ;;
+    --config) need_value "$1" "${2-}"; CONFIG="$2"; shift 2 ;;
+    --skip-dir) need_value "$1" "${2-}"; SKIP_DIRS+=("$2"); shift 2 ;;
     *) echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path]"; exit 1 ;;
   esac
 done
