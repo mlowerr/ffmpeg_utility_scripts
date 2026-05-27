@@ -356,3 +356,11 @@ For `transcode_cli.py`-backed wrappers (`unix/video/*-transcode.sh`, `unix/audio
 - Support forwarding for `--quality`/`-Quality`, `--skip-dir`/`-SkipDir`, and `--config`/`-ConfigPath` where implemented.
 - Under Bash `set -u`, always guard option values before reading positional `$2` (for example, `--quality`, `--skip-dir`, `--config`, and `--threads`) and emit a controlled usage error when missing.
 - Config-provided quality values must be validated to the same range as CLI quality (`0..51`) and reported as `Error: ...` without traceback.
+
+#### 12. New Profile Parity Checklist (Required)
+When adding a new `transcode_cli.py` profile (example: adding a new legacy video extension), you MUST update all related parity points in the same change:
+- **Audio copy fallback parity**: If the new format is a legacy H.264 flow using `-c:a copy`, include its extension in the incompatible-audio retry gate so it can retry with AAC instead of hard-failing.
+- **Wrapper parity**: Add/align both Unix and Windows wrappers and make sure they forward `quality/config/skip-dir` options consistently with existing wrappers.
+- **Driver parity**: If format-specific drivers are orchestrated by `transcode_all_video.*`, add the new wrapper there too.
+
+This specific class of bug (new profile added without fallback-gate parity) has happened multiple times; treat this as a release-blocking checklist item.
