@@ -321,6 +321,10 @@ def main():
             continue
         if p.suffix.lower() != profile["ext"]:
             continue
+        if args.profile == "h264_mpg" and p.name.lower().endswith("_redu.mpg"):
+            # Avoid reprocessing RM/RMVB outputs (and other already reduced MPG names)
+            # into *_REDU_REDU.mp4 on subsequent runs.
+            continue
         if should_skip_file(p.resolve(), skip_dirs):
             continue
         out, _ = out_name(p, profile)
