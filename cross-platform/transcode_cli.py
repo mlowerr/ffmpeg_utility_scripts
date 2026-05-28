@@ -5,6 +5,7 @@ import os
 import signal
 import subprocess
 import sys
+from collections import deque
 from pathlib import Path
 
 PROFILES = {
@@ -110,13 +111,37 @@ def run_capture(cmd):
 
 def run_ffmpeg(cmd):
     stderr_chunks = []
+    recent_lines = deque(maxlen=5)
+    rendered_lines = 0
+    use_compact_view = sys.stderr.isatty()
+
+    def render_recent_lines():
+        nonlocal rendered_lines
+        if not use_compact_view:
+            return
+        if rendered_lines:
+            sys.stderr.write(f"\x1b[{rendered_lines}F")
+        for line in recent_lines:
+            sys.stderr.write("\x1b[2K" + line + "\n")
+        rendered_lines = len(recent_lines)
+        sys.stderr.flush()
+
     with subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
         assert proc.stderr is not None
         for chunk in proc.stderr:
-            sys.stderr.write(chunk)
-            sys.stderr.flush()
             stderr_chunks.append(chunk)
+            for line in chunk.splitlines():
+                recent_lines.append(line)
+                if use_compact_view:
+                    render_recent_lines()
+                else:
+                    sys.stderr.write(line + "\n")
+                    sys.stderr.flush()
         returncode = proc.wait()
+
+    if use_compact_view and rendered_lines:
+        sys.stderr.write("\x1b[2K")
+        sys.stderr.flush()
     return returncode, "".join(stderr_chunks)
 
 
