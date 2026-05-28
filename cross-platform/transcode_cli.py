@@ -116,7 +116,13 @@ def run_ffmpeg(cmd):
             sys.stderr.write(chunk)
             sys.stderr.flush()
             stderr_chunks.append(chunk)
-        return proc.returncode, "".join(stderr_chunks)
+        returncode = proc.wait()
+    return returncode, "".join(stderr_chunks)
+
+
+def run_ffmpeg_with_progress(cmd, file_index, total_files, source_path):
+    print(f"Working on [File {file_index} of {total_files}] [{source_path.resolve()}]")
+    return run_ffmpeg(cmd)
 
 
 def is_audio_copy_compat_failure(stderr: str):
@@ -380,7 +386,7 @@ def main():
             if tmp.exists():
                 tmp.unlink()
             cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
-            returncode, stderr_text = run_ffmpeg(cmd)
+            returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".rm", ".rmvb", ".wmv"}:
                     fallback_reason = "retrying due to incompatible audio copy codec"
@@ -395,7 +401,7 @@ def main():
                     if tmp.exists():
                         tmp.unlink()
                     cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality, force_aac=True)
-                    returncode, stderr_text = run_ffmpeg(cmd)
+                    returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                         transcode_failures += 1
