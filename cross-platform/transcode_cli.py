@@ -104,8 +104,19 @@ def effective_quality(profile_name: str, profile: dict, config: dict, cli_qualit
     return profile["quality"]
 
 
-def run(cmd):
+def run_capture(cmd):
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def run_ffmpeg(cmd):
+    stderr_chunks = []
+    with subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1) as proc:
+        assert proc.stderr is not None
+        for chunk in proc.stderr:
+            sys.stderr.write(chunk)
+            sys.stderr.flush()
+            stderr_chunks.append(chunk)
+        return proc.returncode, "".join(stderr_chunks)
 
 
 def is_audio_copy_compat_failure(stderr: str):
@@ -119,8 +130,8 @@ def is_audio_copy_compat_failure(stderr: str):
     return any(sig in normalized for sig in signatures)
 
 
-def ffmpeg_error_context(proc, src: Path):
-    detail = (proc.stderr or "").strip()
+def ffmpeg_error_context(stderr_text: str, src: Path):
+    detail = (stderr_text or "").strip()
     if not detail:
         detail = "No stderr output from ffmpeg."
     return f"Error: ffmpeg failed on {src}\n{detail}"
@@ -233,7 +244,7 @@ def build_audio_cmd(src, tmp):
 
 
 def ffprobe_ok(path):
-    return run(["ffprobe", "-v", "error", str(path)]).returncode == 0
+    return run_capture(["ffprobe", "-v", "error", str(path)]).returncode == 0
 
 
 def count_audio(path):
@@ -369,12 +380,12 @@ def main():
             if tmp.exists():
                 tmp.unlink()
             cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
-            proc = run(cmd)
-            if proc.returncode != 0:
+            returncode, stderr_text = run_ffmpeg(cmd)
+            if returncode != 0:
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".rm", ".rmvb", ".wmv"}:
                     fallback_reason = "retrying due to incompatible audio copy codec"
-                    if not is_audio_copy_compat_failure(proc.stderr or ""):
-                        print(ffmpeg_error_context(proc, src), file=sys.stderr)
+                    if not is_audio_copy_compat_failure(stderr_text):
+                        print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                         transcode_failures += 1
                         if tmp.exists():
                             tmp.unlink()
@@ -384,16 +395,16 @@ def main():
                     if tmp.exists():
                         tmp.unlink()
                     cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality, force_aac=True)
-                    proc = run(cmd)
-                    if proc.returncode != 0:
-                        print(ffmpeg_error_context(proc, src), file=sys.stderr)
+                    returncode, stderr_text = run_ffmpeg(cmd)
+                    if returncode != 0:
+                        print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                         transcode_failures += 1
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
                         continue
                 else:
-                    print(ffmpeg_error_context(proc, src), file=sys.stderr)
+                    print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                     transcode_failures += 1
                     if tmp.exists():
                         tmp.unlink()
