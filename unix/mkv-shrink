@@ -85,17 +85,7 @@ while IFS= read -r -d '' f; do
             continue
         fi
 
-        if valid_output "$tmp"; then
-            echo "Finalizing existing temporary output: $tmp -> $out"
-            if mv -n -- "$tmp" "$out"; then
-                continue
-            fi
-            echo "Error: Failed to move temporary output into place: $tmp -> $out" >&2
-            ((FAILED_COUNT += 1))
-            continue
-        fi
-
-        echo "Removing invalid temporary output before retrying: $tmp" >&2
+        echo "Removing stale temporary output before retrying: $tmp" >&2
         rm -f -- "$tmp"
     fi
 
