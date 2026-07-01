@@ -5,6 +5,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from collections import deque
 from pathlib import Path
 
@@ -285,6 +286,19 @@ def count_audio(path):
     return len([x for x in p.stdout.splitlines() if x.strip()])
 
 
+def existing_tmp_is_stable(path: Path, delay: float = 1.0):
+    try:
+        before = path.stat()
+    except FileNotFoundError:
+        return False
+    time.sleep(delay)
+    try:
+        after = path.stat()
+    except FileNotFoundError:
+        return False
+    return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
+
+
 def normalize_input_name(path: Path):
     if " " not in path.name:
         return path, False
@@ -407,9 +421,14 @@ def main():
                 print(msg, file=sys.stderr)
                 duplicate_skips.append(msg)
                 continue
-            active_tmp = tmp
             if tmp.exists():
-                tmp.unlink()
+                if not existing_tmp_is_stable(tmp):
+                    print(f"Skipping {src}: temporary output is still changing at {tmp}.", file=sys.stderr)
+                    duplicate_skips.append(f"Skipping {src}: temporary output is still changing at {tmp}.")
+                    continue
+                print(f"Removing stale temporary output before retrying: {tmp}", file=sys.stderr)
+                tmp.unlink(missing_ok=True)
+            active_tmp = tmp
             cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
             returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
