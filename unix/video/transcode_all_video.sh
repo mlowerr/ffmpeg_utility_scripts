@@ -7,8 +7,9 @@
 #   ./transcode_all_video.sh      # Process current directory only
 #   ./transcode_all_video.sh -r   # Process recursively from current directory
 #   ./transcode_all_video.sh -n   # Use NVIDIA NVENC in child scripts
+#   ./transcode_all_video.sh -n --cuda-decode  # Request CUDA decode with NVENC
 #
-# The recursive and NVENC flags are cascaded to each child script.
+# The recursive, NVENC, and CUDA decode flags are cascaded to each child script.
 
 set -u
 shopt -s nullglob nocaseglob
@@ -16,16 +17,18 @@ shopt -s nullglob nocaseglob
 FAILED_COUNT=0
 RECURSE=false
 USE_NVENC=false
+CUDA_DECODE=false
 
 usage() {
-    echo "Usage: $0 [-r] [-n]"
+    echo "Usage: $0 [-r] [-n] [--cuda-decode]"
 }
 
-while getopts "rnh" opt; do
-    case "$opt" in
-        r) RECURSE=true ;;
-        n) USE_NVENC=true ;;
-        h) usage; exit 0 ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -r|--recurse) RECURSE=true; shift ;;
+        -n) USE_NVENC=true; shift ;;
+        --cuda-decode) CUDA_DECODE=true; shift ;;
+        -h|--help) usage; exit 0 ;;
         *) usage; exit 1 ;;
     esac
 done
@@ -57,6 +60,9 @@ if [[ "$RECURSE" == true ]]; then
 fi
 if [[ "$USE_NVENC" == true ]]; then
     child_args+=("-n")
+fi
+if [[ "$CUDA_DECODE" == true ]]; then
+    child_args+=("--cuda-decode")
 fi
 
 run_child_script() {

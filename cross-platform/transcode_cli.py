@@ -205,7 +205,7 @@ def detect_dimensions(path):
         return None, None
 
 
-def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_aac=False):
+def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_aac=False, cuda_decode=False):
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     needs_uhd_fallback = profile["suffix"] == "_REDU" or (profile["suffix"] == "_HEVC" and profile["out_ext"] == ".mp4")
@@ -240,12 +240,17 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
             qopts = ["-crf", "22"]
             scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
 
+    input_opts = []
+    if hw == "nvenc" and cuda_decode:
+        input_opts = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+
     cmd = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
         "warning",
         "-stats",
+        *input_opts,
         "-i",
         str(src),
         "-map",
@@ -325,10 +330,18 @@ def main():
     ap.add_argument("--skip-dir", action="append", default=[])
     ap.add_argument("--quality", type=int)
     ap.add_argument("--config")
+    ap.add_argument(
+        "--cuda-decode",
+        action="store_true",
+        help="When using --hw nvenc, request CUDA hardware decode input options before -i; falls back to CPU decode on failure",
+    )
     ap.add_argument("--strict-cleanup", action="store_true", help="Treat source cleanup issues as hard failures")
     args = ap.parse_args()
     if args.hw == "auto":
         args.hw = "software"
+    if args.cuda_decode and args.hw != "nvenc":
+        print("Warning: --cuda-decode only applies with --hw nvenc; using CPU decode.", file=sys.stderr)
+        args.cuda_decode = False
 
     profile = PROFILES[args.profile]
     if args.threads is not None and args.threads < 0:
@@ -429,8 +442,28 @@ def main():
                 print(f"Removing stale temporary output before retrying: {tmp}", file=sys.stderr)
                 tmp.unlink(missing_ok=True)
             active_tmp = tmp
-            cmd = build_audio_cmd(src, tmp) if profile["mode"] == "audio" else build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
+            cuda_decode_active = profile["mode"] == "video" and args.hw == "nvenc" and args.cuda_decode
+            cmd = (
+                build_audio_cmd(src, tmp)
+                if profile["mode"] == "audio"
+                else build_video_cmd(
+                    src,
+                    tmp,
+                    profile,
+                    args.hw,
+                    args.threads,
+                    quality_override=selected_quality,
+                    cuda_decode=cuda_decode_active,
+                )
+            )
             returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
+            if returncode != 0 and cuda_decode_active:
+                print(f"CUDA decode failed for {src}; retrying with CPU decode and NVENC encode.", file=sys.stderr)
+                cuda_decode_active = False
+                if tmp.exists():
+                    tmp.unlink()
+                cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
+                returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".mov", ".mpg", ".rm", ".rmvb", ".wmv"}:
                     fallback_reason = "retrying due to incompatible audio copy codec"
@@ -444,8 +477,31 @@ def main():
                     print(f"Audio copy failed for {src}; {fallback_reason}.")
                     if tmp.exists():
                         tmp.unlink()
-                    cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality, force_aac=True)
+                    cmd = build_video_cmd(
+                        src,
+                        tmp,
+                        profile,
+                        args.hw,
+                        args.threads,
+                        quality_override=selected_quality,
+                        force_aac=True,
+                        cuda_decode=cuda_decode_active,
+                    )
                     returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
+                    if returncode != 0 and cuda_decode_active:
+                        print(f"CUDA decode failed for {src}; retrying AAC fallback with CPU decode and NVENC encode.", file=sys.stderr)
+                        if tmp.exists():
+                            tmp.unlink()
+                        cmd = build_video_cmd(
+                            src,
+                            tmp,
+                            profile,
+                            args.hw,
+                            args.threads,
+                            quality_override=selected_quality,
+                            force_aac=True,
+                        )
+                        returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                         transcode_failures += 1
