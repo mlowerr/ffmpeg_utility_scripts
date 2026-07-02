@@ -3,16 +3,21 @@
 # Runs FLAC and WAV to MP3 conversion scripts in order.
 #
 # USAGE:
-#   .\transcode_all_audio.ps1           # Process current directory only
-#   .\transcode_all_audio.ps1 -Recurse  # Process recursively from current directory
-#   .\transcode_all_audio.ps1 -n        # Forward NVIDIA NVENC selection to child scripts
+#   .\transcode_all_audio.ps1                         # Process current directory only
+#   .\transcode_all_audio.ps1 -Recurse                # Process recursively from current directory
+#   .\transcode_all_audio.ps1 -Threads 4              # Limit FFmpeg worker threads
+#   .\transcode_all_audio.ps1 -Quality 2              # Forward MP3 quality setting
+#   .\transcode_all_audio.ps1 -ConfigPath config.json # Use a transcode CLI config file
+#   .\transcode_all_audio.ps1 -SkipDir archive        # Skip a directory during recursive scans
 #
-# The recursive and NVENC flags are cascaded to each child script.
+# Hardware encoder flags are intentionally not supported for MP3 audio conversion.
 
 param(
     [switch]$Recurse,
-    [Alias("n")]
-    [switch]$UseNVENC
+    [int]$Threads,
+    [int]$Quality,
+    [string]$ConfigPath,
+    [string[]]$SkipDir
 )
 
 $ErrorActionPreference = "Continue"
@@ -42,8 +47,18 @@ $childArgs = @()
 if ($Recurse) {
     $childArgs += "-Recurse"
 }
-if ($UseNVENC) {
-    $childArgs += "-UseNVENC"
+if ($PSBoundParameters.ContainsKey("Threads")) {
+    $childArgs += @("-Threads", $Threads)
+}
+if ($PSBoundParameters.ContainsKey("Quality")) {
+    $childArgs += @("-Quality", $Quality)
+}
+if ($PSBoundParameters.ContainsKey("ConfigPath")) {
+    $childArgs += @("-ConfigPath", $ConfigPath)
+}
+if ($SkipDir) {
+    $childArgs += "-SkipDir"
+    $childArgs += $SkipDir
 }
 
 function Invoke-ChildTranscodeScript {

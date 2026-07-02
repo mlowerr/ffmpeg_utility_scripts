@@ -4,8 +4,12 @@
 # Runs FLAC and WAV to MP3 conversion scripts in order.
 #
 # USAGE:
-#   ./transcode_all_audio.sh      # Process current directory only
-#   ./transcode_all_audio.sh -r   # Process recursively from current directory
+#   ./transcode_all_audio.sh                         # Process current directory only
+#   ./transcode_all_audio.sh -r                      # Process recursively from current directory
+#   ./transcode_all_audio.sh -t 4                    # Limit FFmpeg worker threads
+#   ./transcode_all_audio.sh --quality 2             # Forward MP3 quality setting
+#   ./transcode_all_audio.sh --config config.json    # Use a transcode CLI config file
+#   ./transcode_all_audio.sh --skip-dir archive      # Skip a directory during recursive scans
 #
 # Hardware encoder flags are intentionally not supported for MP3 audio conversion.
 
@@ -14,14 +18,30 @@ shopt -s nullglob nocaseglob
 
 FAILED_COUNT=0
 RECURSE=false
+THREADS=""
+QUALITY=""
+CONFIG=""
+SKIP_DIRS=()
 usage() {
-    echo "Usage: $0 [-r]"
+    echo "Usage: $0 [-r] [-t threads] [--quality n] [--config path] [--skip-dir path]"
 }
 
-while getopts "rh" opt; do
-    case "$opt" in
-        r) RECURSE=true ;;
-        h) usage; exit 0 ;;
+need_value() {
+    if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        printf 'Error: %s requires a value.\n' "$1" >&2
+        usage >&2
+        exit 1
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -r|--recurse) RECURSE=true; shift ;;
+        -t|--threads) need_value "$1" "${2-}"; THREADS="$2"; shift 2 ;;
+        --quality) need_value "$1" "${2-}"; QUALITY="$2"; shift 2 ;;
+        --config) need_value "$1" "${2-}"; CONFIG="$2"; shift 2 ;;
+        --skip-dir) need_value "$1" "${2-}"; SKIP_DIRS+=("$2"); shift 2 ;;
+        -h|--help) usage; exit 0 ;;
         *) usage; exit 1 ;;
     esac
 done
@@ -49,6 +69,12 @@ child_args=()
 if [[ "$RECURSE" == true ]]; then
     child_args+=("-r")
 fi
+[[ -n "$THREADS" ]] && child_args+=("--threads" "$THREADS")
+[[ -n "$QUALITY" ]] && child_args+=("--quality" "$QUALITY")
+[[ -n "$CONFIG" ]] && child_args+=("--config" "$CONFIG")
+for d in "${SKIP_DIRS[@]}"; do
+    child_args+=("--skip-dir" "$d")
+done
 
 run_child_script() {
     local script_name="$1"
