@@ -25,7 +25,7 @@ CUDA_DECODE=false
 SKIP_DIRS=()
 
 usage() {
-    echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path] [--cuda-decode]"
+    echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path] [-c|--cuda-decode]"
 }
 
 need_value() {
@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
         --quality) need_value "$1" "${2-}"; QUALITY="$2"; shift 2 ;;
         --config) need_value "$1" "${2-}"; CONFIG="$2"; shift 2 ;;
         --skip-dir) need_value "$1" "${2-}"; SKIP_DIRS+=("$2"); shift 2 ;;
-        --cuda-decode) CUDA_DECODE=true; shift ;;
+        -c|--cuda-decode) CUDA_DECODE=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; exit 1 ;;
     esac
