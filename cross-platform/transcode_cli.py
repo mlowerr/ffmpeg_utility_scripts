@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import errno
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -338,12 +340,49 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0):
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
+HARDLINK_UNSUPPORTED_ERRNOS = {
+    errno.EACCES,
+    errno.EPERM,
+    errno.EXDEV,
+    errno.EMLINK,
+}
+for maybe_errno in ("ENOTSUP", "EOPNOTSUPP", "ENOSYS"):
+    value = getattr(errno, maybe_errno, None)
+    if value is not None:
+        HARDLINK_UNSUPPORTED_ERRNOS.add(value)
+
+
+def copy_output_no_overwrite(tmp: Path, out: Path):
+    """Copy tmp to out using exclusive creation so an existing output is kept."""
+    out_fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(out_fd, "wb") as out_file:
+            out_fd = -1
+            with tmp.open("rb") as src_file:
+                shutil.copyfileobj(src_file, out_file, length=16 * 1024 * 1024)
+            out_file.flush()
+            os.fsync(out_file.fileno())
+    except Exception:
+        if out_fd >= 0:
+            os.close(out_fd)
+        out.unlink(missing_ok=True)
+        raise
+
+    try:
+        tmp.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def finalize_output_no_overwrite(tmp: Path, out: Path):
     """Finalize tmp as out without ever replacing an existing destination.
 
-    The temporary file is created in the destination directory, so hard-linking
-    it into place is atomic on POSIX and fails if the output already exists.
-    On Windows, os.rename provides same-directory no-overwrite behavior.
+    POSIX first uses a hard link, which is atomic and fails if the output
+    already exists. If the filesystem does not support hard links, fall back to
+    an exclusive-create copy so exFAT/FAT and network mounts still complete
+    without overwriting an existing output. On Windows, os.rename provides
+    same-directory no-overwrite behavior.
 
     Returns True when the temporary path was removed or moved away; False means
     the output was finalized but the temporary hard-link cleanup failed.
@@ -358,6 +397,8 @@ def finalize_output_no_overwrite(tmp: Path, out: Path):
     except OSError as exc:
         if out.exists():
             raise FileExistsError(f"destination already exists: {out}") from exc
+        if exc.errno in HARDLINK_UNSUPPORTED_ERRNOS:
+            return copy_output_no_overwrite(tmp, out)
         raise
 
     try:
