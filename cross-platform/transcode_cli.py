@@ -241,8 +241,15 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
             scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
 
     input_opts = []
-    if hw == "nvenc" and cuda_decode:
-        input_opts = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+    # Request the CUDA decoder without forcing decoded frames to remain in CUDA
+    # device memory. Keeping frames in device memory with -hwaccel_output_format
+    # cuda is fragile here because this CLI may add CPU-side filters (for example
+    # the UHD downscale path) or otherwise require ffmpeg to negotiate a system
+    # memory frame format before NVENC. Letting ffmpeg download frames as needed
+    # avoids "Failed to inject frame into filter network: Function not implemented"
+    # while still using CUDA for decode when ffmpeg supports it.
+    if hw == "nvenc" and cuda_decode and codec.endswith("_nvenc") and not scale_opts:
+        input_opts = ["-hwaccel", "cuda"]
 
     cmd = [
         "ffmpeg",
