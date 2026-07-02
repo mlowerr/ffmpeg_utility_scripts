@@ -6,25 +6,21 @@
 # USAGE:
 #   ./transcode_all_audio.sh      # Process current directory only
 #   ./transcode_all_audio.sh -r   # Process recursively from current directory
-#   ./transcode_all_audio.sh -n   # Forward NVIDIA NVENC selection to child scripts
 #
-# The recursive and NVENC flags are cascaded to each child script.
+# Hardware encoder flags are intentionally not supported for MP3 audio conversion.
 
 set -u
 shopt -s nullglob nocaseglob
 
 FAILED_COUNT=0
 RECURSE=false
-USE_NVENC=false
-
 usage() {
-    echo "Usage: $0 [-r] [-n]"
+    echo "Usage: $0 [-r]"
 }
 
-while getopts "rnh" opt; do
+while getopts "rh" opt; do
     case "$opt" in
         r) RECURSE=true ;;
-        n) USE_NVENC=true ;;
         h) usage; exit 0 ;;
         *) usage; exit 1 ;;
     esac
@@ -52,9 +48,6 @@ script_dir=$(resolve_script_dir)
 child_args=()
 if [[ "$RECURSE" == true ]]; then
     child_args+=("-r")
-fi
-if [[ "$USE_NVENC" == true ]]; then
-    child_args+=("-n")
 fi
 
 run_child_script() {
