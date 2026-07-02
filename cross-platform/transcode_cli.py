@@ -365,6 +365,7 @@ def main():
     ap.add_argument("--quality", type=int)
     ap.add_argument("--config")
     ap.add_argument(
+        "-c",
         "--cuda-decode",
         action="store_true",
         help="When using --hw nvenc, request CUDA hardware decode input options before -i; falls back to CPU decode on failure",

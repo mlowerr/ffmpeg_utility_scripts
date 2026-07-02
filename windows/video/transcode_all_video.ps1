@@ -6,13 +6,16 @@
 #   .\transcode_all_video.ps1           # Process current directory only
 #   .\transcode_all_video.ps1 -Recurse  # Process recursively from current directory
 #   .\transcode_all_video.ps1 -n        # Use NVIDIA NVENC in child scripts
+#   .\transcode_all_video.ps1 -n -c     # Request CUDA decode with NVENC
 #
 # The recursive and NVENC flags are cascaded to each child script.
 
 param(
     [switch]$Recurse,
     [Alias("n")]
-    [switch]$UseNVENC
+    [switch]$UseNVENC,
+    [Alias("c")]
+    [switch]$CudaDecode
 )
 
 $ErrorActionPreference = "Continue"
@@ -46,6 +49,9 @@ if ($Recurse) {
 }
 if ($UseNVENC) {
     $childArgs += "-UseNVENC"
+}
+if ($CudaDecode) {
+    $childArgs += "-CudaDecode"
 }
 
 function Invoke-ChildTranscodeScript {

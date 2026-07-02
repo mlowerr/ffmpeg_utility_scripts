@@ -1,9 +1,10 @@
-param([switch]$Recurse,[switch]$UseQuickSync,[switch]$UseNVENC,[switch]$UseAMF,[int]$Threads)
+param([Alias("c")][switch]$CudaDecode,[switch]$Recurse,[switch]$UseQuickSync,[switch]$UseNVENC,[switch]$UseAMF,[int]$Threads)
 $hw = "software"
 if ($UseQuickSync) { $hw = "qsv" } elseif ($UseNVENC) { $hw = "nvenc" } elseif ($UseAMF) { $hw = "amf" }
 $args = @("--profile", "h264_mpg", "--hw", $hw)
 if ($Recurse) { $args += "--recurse" }
 if ($PSBoundParameters.ContainsKey("Threads")) { $args += @("--threads", $Threads) }
+if ($CudaDecode) { $args += "--cuda-decode" }
 $cliPath = Join-Path $PSScriptRoot "..\..\cross-platform\transcode_cli.py"
 if (Get-Command py -ErrorAction SilentlyContinue) {
     & py -3 $cliPath @args
