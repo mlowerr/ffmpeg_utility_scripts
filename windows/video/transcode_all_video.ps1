@@ -76,9 +76,8 @@ if ($PSBoundParameters.ContainsKey("ConfigPath")) {
     $childArgs += @("-ConfigPath", $ConfigPath)
 }
 if ($SkipDir) {
-    foreach ($d in $SkipDir) {
-        $childArgs += @("-SkipDir", $d)
-    }
+    $childArgs += "-SkipDir"
+    $childArgs += $SkipDir
 }
 if ($CudaDecode) {
     $childArgs += "-CudaDecode"
