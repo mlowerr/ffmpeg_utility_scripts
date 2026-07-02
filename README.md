@@ -168,6 +168,8 @@ python3 ./cross-platform/recursive-file-type-report.py /path/to/media
 ./unix/audio/flac-to-mp3.sh
 ./unix/audio/wav-to-mp3.sh
 ./unix/audio/transcode_all_audio.sh
+# Optional audio wrapper flags: -r/--recurse, -t/--threads, --quality, --config, --skip-dir
+# Hardware encoder flags (-q, -n, -a) are video-only and do not accelerate MP3 conversion.
 
 # Windows - Audio conversion to 256k MP3
 .\windows\audio\flac-to-mp3.ps1
@@ -220,7 +222,7 @@ python3 ./cross-platform/files-by-extension.py --recursive /path/to/media .mp4
 
 ### Hardware Acceleration
 
-Use hardware encoders for significantly faster processing (2-10x speedup):
+Use hardware encoders for significantly faster video processing (2-10x speedup). These flags are video-only; MP3 audio conversion uses the MP3 encoder and is not accelerated by `-q`, `-n`, or `-a`.
 
 | Flag | Encoder | Platform |
 |------|---------|----------|
