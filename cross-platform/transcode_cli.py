@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from collections import deque
+from functools import lru_cache
 from pathlib import Path
 
 PROFILES = {
@@ -108,6 +109,28 @@ def effective_quality(profile_name: str, profile: dict, config: dict, cli_qualit
 
 def run_capture(cmd):
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+@lru_cache(maxsize=1)
+def ffmpeg_filter_names():
+    probe = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
+    if probe.returncode != 0:
+        return set()
+    filters = set()
+    for line in probe.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            filters.add(parts[1])
+    return filters
+
+
+def cuda_scale_filter():
+    filters = ffmpeg_filter_names()
+    if "scale_cuda" in filters:
+        return "format=nv12,hwupload_cuda,scale_cuda=w='min(1920,iw)':h=-2:format=nv12"
+    if "scale_npp" in filters:
+        return "format=nv12,hwupload_cuda,scale_npp=w='min(1920,iw)':h=-2:format=nv12"
+    return None
 
 
 def run_ffmpeg(cmd):
@@ -235,10 +258,14 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
         width, height = detect_dimensions(src)
         if width is not None and height is not None and (width >= 3840 or height >= 2160):
             print(f"UHD/4K detected ({width}x{height}): forcing aspect-safe 1080p downscale profile for stability.")
-            codec = "libx264"
-            preset = "veryfast"
-            qopts = ["-crf", "22"]
-            scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
+            cuda_filter = cuda_scale_filter() if hw == "nvenc" else None
+            if cuda_filter:
+                scale_opts = ["-vf", cuda_filter]
+            else:
+                codec = "libx264"
+                preset = "veryfast"
+                qopts = ["-crf", "22"]
+                scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
 
     input_opts = []
        # Request the CUDA decoder without forcing decoded frames to remain in CUDA
