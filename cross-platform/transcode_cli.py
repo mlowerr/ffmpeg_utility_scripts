@@ -241,7 +241,12 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
             scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
 
     input_opts = []
-    if hw == "nvenc" and cuda_decode:
+    # CUDA-decoded frames stay in GPU memory. That is only safe when they can be
+    # handed directly to NVENC. The UHD fallback below intentionally switches to
+    # a CPU scale filter and software encoder, so keep decode on the CPU too;
+    # otherwise ffmpeg fails with "Failed to inject frame into filter network:
+    # Function not implemented" before the existing retry path recovers.
+    if hw == "nvenc" and cuda_decode and codec.endswith("_nvenc") and not scale_opts:
         input_opts = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
 
     cmd = [
