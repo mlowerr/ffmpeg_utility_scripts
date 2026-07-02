@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from collections import deque
+from functools import lru_cache
 from pathlib import Path
 
 PROFILES = {
@@ -110,6 +111,29 @@ def run_capture(cmd):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
+@lru_cache(maxsize=1)
+def ffmpeg_filter_names():
+    probe = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
+    if probe.returncode != 0:
+        return set()
+    filters = set()
+    for line in probe.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            filters.add(parts[1])
+    return filters
+
+
+def cuda_scale_filter(cuda_decode=False):
+    filters = ffmpeg_filter_names()
+    upload_prefix = "" if cuda_decode else "format=nv12,hwupload_cuda,"
+    if "scale_cuda" in filters:
+        return f"{upload_prefix}scale_cuda=w='min(1920,iw)':h=-2:format=nv12"
+    if "scale_npp" in filters:
+        return f"{upload_prefix}scale_npp=w='min(1920,iw)':h=-2:format=nv12"
+    return None
+
+
 def run_ffmpeg(cmd):
     stderr_chunks = []
     recent_lines = deque(maxlen=5)
@@ -208,6 +232,7 @@ def detect_dimensions(path):
 def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_aac=False, cuda_decode=False):
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
+    cuda_filter = None
     needs_uhd_fallback = profile["suffix"] == "_REDU" or (profile["suffix"] == "_HEVC" and profile["out_ext"] == ".mp4")
 
     if profile["suffix"] == "_HEVC":
@@ -235,23 +260,23 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
         width, height = detect_dimensions(src)
         if width is not None and height is not None and (width >= 3840 or height >= 2160):
             print(f"UHD/4K detected ({width}x{height}): forcing aspect-safe 1080p downscale profile for stability.")
-            codec = "libx264"
-            preset = "veryfast"
-            qopts = ["-crf", "22"]
-            scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
+            cuda_filter = cuda_scale_filter(cuda_decode=cuda_decode) if hw == "nvenc" else None
+            if cuda_filter:
+                scale_opts = ["-vf", cuda_filter]
+            else:
+                codec = "libx264"
+                preset = "veryfast"
+                qopts = ["-crf", "22"]
+                scale_opts = ["-vf", "scale='min(1920,iw)':-2"]
 
     input_opts = []
-       # Request the CUDA decoder without forcing decoded frames to remain in CUDA
-    # device memory. Keeping frames in device memory with -hwaccel_output_format
-    # cuda is fragile here because this CLI may add CPU-side filters (for example
-    # the UHD downscale path) or otherwise require ffmpeg to negotiate a system
-    # memory frame format before NVENC. Letting ffmpeg download frames as needed
-    # avoids "Failed to inject frame into filter network: Function not implemented"
-    # while still using CUDA for decode when ffmpeg supports it.
-    if hw == "nvenc" and cuda_decode and codec.endswith("_nvenc") and not scale_opts:
+    # Preserve CUDA-resident frames when the UHD NVENC path can keep decode, scale,
+    # and encode on the GPU. For other paths, request CUDA decode without forcing
+    # CUDA output frames because CPU-side filters may need system-memory frames.
+    if hw == "nvenc" and cuda_decode and codec.endswith("_nvenc"):
         input_opts = ["-hwaccel", "cuda"]
-
-
+        if scale_opts and cuda_filter:
+            input_opts += ["-hwaccel_output_format", "cuda"]
 
     cmd = [
         "ffmpeg",
