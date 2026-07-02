@@ -362,7 +362,7 @@ def copy_output_no_overwrite(tmp: Path, out: Path):
                 shutil.copyfileobj(src_file, out_file, length=16 * 1024 * 1024)
             out_file.flush()
             os.fsync(out_file.fileno())
-    except Exception:
+    except BaseException:
         if out_fd >= 0:
             os.close(out_fd)
         out.unlink(missing_ok=True)
