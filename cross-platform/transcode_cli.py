@@ -338,6 +338,34 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0):
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
+def finalize_output_no_overwrite(tmp: Path, out: Path):
+    """Finalize tmp as out without ever replacing an existing destination.
+
+    The temporary file is created in the destination directory, so hard-linking
+    it into place is atomic on POSIX and fails if the output already exists.
+    On Windows, os.rename provides same-directory no-overwrite behavior.
+
+    Returns True when the temporary path was removed or moved away; False means
+    the output was finalized but the temporary hard-link cleanup failed.
+    """
+    try:
+        if os.name == "nt":
+            os.rename(tmp, out)
+            return True
+        os.link(tmp, out)
+    except FileExistsError:
+        raise
+    except OSError as exc:
+        if out.exists():
+            raise FileExistsError(f"destination already exists: {out}") from exc
+        raise
+
+    try:
+        tmp.unlink()
+    except OSError:
+        return False
+    return True
+
 def normalize_input_name(path: Path):
     if " " not in path.name:
         return path, False
@@ -567,13 +595,25 @@ def main():
                     active_tmp = None
                     continue
             try:
-                tmp.replace(out)
+                finalized_tmp_removed = finalize_output_no_overwrite(tmp, out)
+            except FileExistsError:
+                print(f"Error: Destination already exists for {src}: {out}", file=sys.stderr)
+                transcode_failures += 1
+                tmp.unlink(missing_ok=True)
+                active_tmp = None
+                continue
             except Exception as e:
                 print(f"Error moving temporary output into place for {src}: {e}", file=sys.stderr)
                 transcode_failures += 1
                 tmp.unlink(missing_ok=True)
                 active_tmp = None
                 continue
+            if not finalized_tmp_removed:
+                print(
+                    f"Warning: Output finalized at {out}, but failed to remove temporary hard link {tmp}.",
+                    file=sys.stderr,
+                )
+                cleanup_warnings += 1
 
             try:
                 src.unlink()
