@@ -21,8 +21,8 @@ PROFILES = {
     "h264_wmv": {"ext": ".wmv", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 24},
     "h264_rm": {"ext": ".rm", "suffix": "_REDU", "out_ext": ".mpg", "mode": "video", "quality": 26},
     "h264_rmvb": {"ext": ".rmvb", "suffix": "_REDU", "out_ext": ".mpg", "mode": "video", "quality": 26},
-    "hevc_mp4": {"ext": ".mp4", "suffix": "_HEVC_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
-    "hevc_mkv": {"ext": ".mkv", "suffix": "_HEVC_REDU", "out_ext": ".mkv", "mode": "video", "quality": 26},
+    "hevc_mp4": {"ext": ".mp4", "suffix": "_HEVC", "out_ext": ".mp4", "mode": "video", "quality": 26},
+    "hevc_mkv": {"ext": ".mkv", "suffix": "_HEVC", "out_ext": ".mkv", "mode": "video", "quality": 26},
     "flac_mp3": {"ext": ".flac", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
     "wav_mp3": {"ext": ".wav", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
 }
