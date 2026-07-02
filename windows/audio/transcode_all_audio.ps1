@@ -57,9 +57,8 @@ if ($PSBoundParameters.ContainsKey("ConfigPath")) {
     $childArgs += @("-ConfigPath", $ConfigPath)
 }
 if ($SkipDir) {
-    foreach ($dir in $SkipDir) {
-        $childArgs += @("-SkipDir", $dir)
-    }
+    $childArgs += "-SkipDir"
+    $childArgs += $SkipDir
 }
 
 function Invoke-ChildTranscodeScript {
