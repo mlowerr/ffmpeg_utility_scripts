@@ -8,28 +8,47 @@
 #   ./transcode_all_video.sh -r   # Process recursively from current directory
 #   ./transcode_all_video.sh -n   # Use NVIDIA NVENC in child scripts
 #   ./transcode_all_video.sh -n --cuda-decode  # Request CUDA decode with NVENC
+#   ./transcode_all_video.sh -r --quality 24 --skip-dir ./archive
 #
-# The recursive, NVENC, and CUDA decode flags are cascaded to each child script.
+# Supported child-wrapper options are cascaded to each child script.
 
 set -u
 shopt -s nullglob nocaseglob
 
 FAILED_COUNT=0
 RECURSE=false
-USE_NVENC=false
+HW="software"
+THREADS=""
+QUALITY=""
+CONFIG=""
 CUDA_DECODE=false
+SKIP_DIRS=()
 
 usage() {
-    echo "Usage: $0 [-r] [-n] [--cuda-decode]"
+    echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path] [--cuda-decode]"
+}
+
+need_value() {
+    if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        printf 'Error: %s requires a value.\n' "$1" >&2
+        usage >&2
+        exit 1
+    fi
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -r|--recurse) RECURSE=true; shift ;;
-        -n) USE_NVENC=true; shift ;;
+        -q) HW="qsv"; shift ;;
+        -n) HW="nvenc"; shift ;;
+        -a) HW="amf"; shift ;;
+        -t|--threads) need_value "$1" "${2-}"; THREADS="$2"; shift 2 ;;
+        --quality) need_value "$1" "${2-}"; QUALITY="$2"; shift 2 ;;
+        --config) need_value "$1" "${2-}"; CONFIG="$2"; shift 2 ;;
+        --skip-dir) need_value "$1" "${2-}"; SKIP_DIRS+=("$2"); shift 2 ;;
         --cuda-decode) CUDA_DECODE=true; shift ;;
         -h|--help) usage; exit 0 ;;
-        *) usage; exit 1 ;;
+        *) usage >&2; exit 1 ;;
     esac
 done
 
@@ -58,12 +77,26 @@ child_args=()
 if [[ "$RECURSE" == true ]]; then
     child_args+=("-r")
 fi
-if [[ "$USE_NVENC" == true ]]; then
-    child_args+=("-n")
+case "$HW" in
+    qsv) child_args+=("-q") ;;
+    nvenc) child_args+=("-n") ;;
+    amf) child_args+=("-a") ;;
+esac
+if [[ -n "$THREADS" ]]; then
+    child_args+=("--threads" "$THREADS")
+fi
+if [[ -n "$QUALITY" ]]; then
+    child_args+=("--quality" "$QUALITY")
+fi
+if [[ -n "$CONFIG" ]]; then
+    child_args+=("--config" "$CONFIG")
 fi
 if [[ "$CUDA_DECODE" == true ]]; then
     child_args+=("--cuda-decode")
 fi
+for d in "${SKIP_DIRS[@]}"; do
+    child_args+=("--skip-dir" "$d")
+done
 
 run_child_script() {
     local script_name="$1"
