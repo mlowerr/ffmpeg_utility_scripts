@@ -7,15 +7,25 @@
 #   .\transcode_all_video.ps1 -Recurse  # Process recursively from current directory
 #   .\transcode_all_video.ps1 -n        # Use NVIDIA NVENC in child scripts
 #   .\transcode_all_video.ps1 -n -c     # Request CUDA decode with NVENC
+#   .\transcode_all_video.ps1 -q -Quality 24 -SkipDir .\archive
 #
-# The recursive and NVENC flags are cascaded to each child script.
+# Supported child-wrapper options are cascaded to each child script.
 
 param(
     [switch]$Recurse,
     [Alias("n")]
     [switch]$UseNVENC,
+    [Alias("q")]
+    [switch]$UseQuickSync,
+    [Alias("a")]
+    [switch]$UseAMF,
     [Alias("c")]
-    [switch]$CudaDecode
+    [switch]$CudaDecode,
+    [Alias("t")]
+    [int]$Threads,
+    [string[]]$SkipDir,
+    [int]$Quality,
+    [string]$ConfigPath
 )
 
 $ErrorActionPreference = "Continue"
@@ -47,8 +57,28 @@ $childArgs = @()
 if ($Recurse) {
     $childArgs += "-Recurse"
 }
+if ($UseQuickSync) {
+    $childArgs += "-UseQuickSync"
+}
 if ($UseNVENC) {
     $childArgs += "-UseNVENC"
+}
+if ($UseAMF) {
+    $childArgs += "-UseAMF"
+}
+if ($PSBoundParameters.ContainsKey("Threads")) {
+    $childArgs += @("-Threads", $Threads)
+}
+if ($PSBoundParameters.ContainsKey("Quality")) {
+    $childArgs += @("-Quality", $Quality)
+}
+if ($PSBoundParameters.ContainsKey("ConfigPath")) {
+    $childArgs += @("-ConfigPath", $ConfigPath)
+}
+if ($SkipDir) {
+    foreach ($d in $SkipDir) {
+        $childArgs += @("-SkipDir", $d)
+    }
 }
 if ($CudaDecode) {
     $childArgs += "-CudaDecode"
