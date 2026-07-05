@@ -233,7 +233,7 @@ def detect_dimensions(path):
         return None, None
 
 
-def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_aac=False, cuda_decode=False):
+def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_audio_fallback=False, cuda_decode=False):
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     cuda_filter = None
@@ -299,8 +299,9 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     if profile["out_ext"] == ".mkv":
         cmd += ["-map", "0:s?", "-c:s", "copy"]
     audio_opts = ["-c:a", "copy"]
-    if force_aac:
-        audio_opts = ["-c:a", "aac", "-b:a", "192k"]
+    if force_audio_fallback:
+        fallback_codec = "mp2" if profile["out_ext"] == ".mpeg" else "aac"
+        audio_opts = ["-c:a", fallback_codec, "-b:a", "192k"]
     cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, *audio_opts, "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
         cmd += ["-movflags", "+faststart"]
@@ -572,7 +573,7 @@ def main():
                 returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
                 if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".m4v", ".mov", ".mpg", ".mpeg", ".rm", ".rmvb", ".wmv"}:
-                    fallback_reason = "retrying due to incompatible audio copy codec"
+                    fallback_reason = "retrying with a container-compatible audio codec"
                     if not is_audio_copy_compat_failure(stderr_text):
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                         transcode_failures += 1
@@ -590,12 +591,12 @@ def main():
                         args.hw,
                         args.threads,
                         quality_override=selected_quality,
-                        force_aac=True,
+                        force_audio_fallback=True,
                         cuda_decode=cuda_decode_active,
                     )
                     returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0 and cuda_decode_active:
-                        print(f"CUDA decode failed for {src}; retrying AAC fallback with CPU decode and NVENC encode.", file=sys.stderr)
+                        print(f"CUDA decode failed for {src}; retrying audio fallback with CPU decode and NVENC encode.", file=sys.stderr)
                         if tmp.exists():
                             tmp.unlink()
                         cmd = build_video_cmd(
@@ -605,7 +606,7 @@ def main():
                             args.hw,
                             args.threads,
                             quality_override=selected_quality,
-                            force_aac=True,
+                            force_audio_fallback=True,
                         )
                         returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:
