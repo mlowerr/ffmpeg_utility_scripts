@@ -126,6 +126,7 @@ run_child_script() {
 run_child_script "h264-avi-transcode.sh"
 run_child_script "h264-flv-transcode.sh"
 run_child_script "h264-mov-transcode.sh"
+run_child_script "h264-m4v-transcode.sh"
 run_child_script "h264-mpg-transcode.sh"
 run_child_script "h264-rm-transcode.sh"
 run_child_script "h264-rmvb-transcode.sh"

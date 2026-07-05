@@ -116,6 +116,7 @@ function Invoke-ChildTranscodeScript {
 Invoke-ChildTranscodeScript -ScriptName "h264-avi-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-flv-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-mov-transcode.ps1"
+Invoke-ChildTranscodeScript -ScriptName "h264-m4v-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-mpg-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-rm-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-rmvb-transcode.ps1"

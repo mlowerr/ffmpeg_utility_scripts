@@ -29,6 +29,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-transcode.sh
 │   │   ├── h264-avi-transcode.sh
 │   │   ├── h264-mov-transcode.sh
+│   │   ├── h264-m4v-transcode.sh
 │   │   ├── h264-mpg-transcode.sh
 │   │   ├── h264-flv-transcode.sh
 │   │   ├── h264-wmv-transcode.sh
@@ -44,6 +45,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-transcode.ps1
 │   │   ├── h264-avi-transcode.ps1
 │   │   ├── h264-mov-transcode.ps1
+│   │   ├── h264-m4v-transcode.ps1
 │   │   ├── h264-mpg-transcode.ps1
 │   │   ├── h264-flv-transcode.ps1
 │   │   ├── h264-wmv-transcode.ps1
@@ -127,10 +129,11 @@ Process supported video files in the current directory:
 ./unix/video/h264-transcode.sh      # MP4 input
 ./unix/video/h264-avi-transcode.sh  # AVI input
 ./unix/video/h264-mov-transcode.sh  # MOV input
+./unix/video/h264-m4v-transcode.sh  # M4V input
 ./unix/video/h264-mpg-transcode.sh  # MPG input
 ./unix/video/h264-flv-transcode.sh  # FLV input
 ./unix/video/h264-wmv-transcode.sh  # WMV input
-./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
+./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, M4V, MPG, WMV, then MP4 inputs
 
 # Linux/macOS - HEVC encoding
 ./unix/video/hevc-transcode.sh
@@ -139,10 +142,11 @@ Process supported video files in the current directory:
 .\windows\video\h264-transcode.ps1      # MP4 input
 .\windows\video\h264-avi-transcode.ps1  # AVI input
 .\windows\video\h264-mov-transcode.ps1  # MOV input
+.\windows\video\h264-m4v-transcode.ps1  # M4V input
 .\windows\video\h264-mpg-transcode.ps1  # MPG input
 .\windows\video\h264-flv-transcode.ps1  # FLV input
 .\windows\video\h264-wmv-transcode.ps1  # WMV input
-.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, MPG, WMV, then MP4 inputs
+.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, M4V, MPG, WMV, then MP4 inputs
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\video\hevc-transcode.ps1
@@ -186,6 +190,7 @@ Process supported video files from the current directory downward:
 ./unix/video/h264-transcode.sh -r
 ./unix/video/h264-avi-transcode.sh -r
 ./unix/video/h264-mov-transcode.sh -r
+./unix/video/h264-m4v-transcode.sh -r
 ./unix/video/h264-mpg-transcode.sh -r
 ./unix/video/h264-flv-transcode.sh -r
 ./unix/video/h264-wmv-transcode.sh -r
@@ -201,6 +206,7 @@ Process supported video files from the current directory downward:
 .\windows\video\h264-transcode.ps1 -Recurse
 .\windows\video\h264-avi-transcode.ps1 -Recurse
 .\windows\video\h264-mov-transcode.ps1 -Recurse
+.\windows\video\h264-m4v-transcode.ps1 -Recurse
 .\windows\video\h264-mpg-transcode.ps1 -Recurse
 .\windows\video\h264-flv-transcode.ps1 -Recurse
 .\windows\video\h264-wmv-transcode.ps1 -Recurse
@@ -237,6 +243,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 ./unix/video/h264-transcode.sh -r -q
 ./unix/video/h264-avi-transcode.sh -r -q
 ./unix/video/h264-mov-transcode.sh -r -q
+./unix/video/h264-m4v-transcode.sh -r -q
 ./unix/video/h264-mpg-transcode.sh -r -q
 ./unix/video/h264-flv-transcode.sh -r -q
 ./unix/video/h264-wmv-transcode.sh -r -q
@@ -247,6 +254,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 ./unix/video/h264-transcode.sh -r -n
 ./unix/video/h264-avi-transcode.sh -r -n
 ./unix/video/h264-mov-transcode.sh -r -n
+./unix/video/h264-m4v-transcode.sh -r -n
 ./unix/video/h264-mpg-transcode.sh -r -n
 ./unix/video/h264-flv-transcode.sh -r -n
 ./unix/video/h264-wmv-transcode.sh -r -n
@@ -256,6 +264,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 .\windows\video\h264-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-avi-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-mov-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-m4v-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-mpg-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-flv-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-wmv-transcode.ps1 -Recurse -UseNVENC
@@ -303,7 +312,7 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 ## How It Works
 
 1. **File Preparation**: If a selected input filename contains spaces, that file is renamed to use underscores immediately before encoding/conversion
-2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, or lists full paths for a requested extension
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.m4v`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, or lists full paths for a requested extension
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
 4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
 5. **Verification**: Validates output file integrity with ffprobe
@@ -312,6 +321,7 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 ## Output Files
 
 - **H.264 (MP4/AVI/MOV workflows)**: Creates `*_REDU.mp4` files
+- **H.264 (M4V workflow)**: Creates `*_REDU.m4v` files
 - **HEVC (MP4 workflow)**: Creates `*_HEVC.mp4` files
 - **HEVC (MKV workflow)**: Creates `*_HEVC.mkv` files
 - **Audio conversion**: Creates `*.mp3` files at 256 kbps for FLAC/WAV inputs
@@ -350,9 +360,9 @@ Optional strict mode:
 
 ## Troubleshooting
 
-### "No eligible MP4/AVI/MOV files found to process"
+### "No eligible MP4/AVI/MOV/M4V files found to process"
 - The selected script found no matching input files that have not already been processed
-- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, `.mov`, `.mpg`, `.flv`, `.wmv`, `.mkv`, `.flac`, or `.wav`
+- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, `.mov`, `.m4v`, `.mpg`, `.flv`, `.wmv`, `.mkv`, `.flac`, or `.wav`
 - Check that you don't already have `*_REDU.mp4`, `*_HEVC.mp4`, or `*_HEVC.mkv` versions
 
 ### "ffmpeg failed" or "Output file verification failed"
