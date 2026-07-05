@@ -18,6 +18,7 @@ PROFILES = {
     "h264_mov": {"ext": ".mov", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
     "h264_m4v": {"ext": ".m4v", "suffix": "_REDU", "out_ext": ".m4v", "mode": "video", "quality": 26},
     "h264_mpg": {"ext": ".mpg", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
+    "h264_mpeg": {"ext": ".mpeg", "suffix": "_REDU", "out_ext": ".mpeg", "mode": "video", "quality": 26},
     "h264_flv": {"ext": ".flv", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
     "h264_wmv": {"ext": ".wmv", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 24},
     "h264_rm": {"ext": ".rm", "suffix": "_REDU", "out_ext": ".mpg", "mode": "video", "quality": 26},
@@ -570,7 +571,7 @@ def main():
                 cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
                 returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
-                if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".m4v", ".mov", ".mpg", ".rm", ".rmvb", ".wmv"}:
+                if profile["mode"] == "video" and profile["ext"] in {".avi", ".flv", ".m4v", ".mov", ".mpg", ".mpeg", ".rm", ".rmvb", ".wmv"}:
                     fallback_reason = "retrying due to incompatible audio copy codec"
                     if not is_audio_copy_compat_failure(stderr_text):
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)

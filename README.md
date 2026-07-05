@@ -31,6 +31,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-mov-transcode.sh
 │   │   ├── h264-m4v-transcode.sh
 │   │   ├── h264-mpg-transcode.sh
+│   │   ├── h264-mpeg-transcode.sh
 │   │   ├── h264-flv-transcode.sh
 │   │   ├── h264-wmv-transcode.sh
 │   │   ├── hevc-transcode.sh
@@ -47,6 +48,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-mov-transcode.ps1
 │   │   ├── h264-m4v-transcode.ps1
 │   │   ├── h264-mpg-transcode.ps1
+│   │   ├── h264-mpeg-transcode.ps1
 │   │   ├── h264-flv-transcode.ps1
 │   │   ├── h264-wmv-transcode.ps1
 │   │   ├── hevc-transcode.ps1
@@ -130,10 +132,11 @@ Process supported video files in the current directory:
 ./unix/video/h264-avi-transcode.sh  # AVI input
 ./unix/video/h264-mov-transcode.sh  # MOV input
 ./unix/video/h264-m4v-transcode.sh  # M4V input
-./unix/video/h264-mpg-transcode.sh  # MPG input
+./unix/video/h264-mpg-transcode.sh   # MPG input
+./unix/video/h264-mpeg-transcode.sh  # MPEG input/output
 ./unix/video/h264-flv-transcode.sh  # FLV input
 ./unix/video/h264-wmv-transcode.sh  # WMV input
-./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, M4V, MPG, WMV, then MP4 inputs
+./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, M4V, MPG, MPEG, WMV, then MP4 inputs
 
 # Linux/macOS - HEVC encoding
 ./unix/video/hevc-transcode.sh
@@ -143,10 +146,11 @@ Process supported video files in the current directory:
 .\windows\video\h264-avi-transcode.ps1  # AVI input
 .\windows\video\h264-mov-transcode.ps1  # MOV input
 .\windows\video\h264-m4v-transcode.ps1  # M4V input
-.\windows\video\h264-mpg-transcode.ps1  # MPG input
+.\windows\video\h264-mpg-transcode.ps1   # MPG input
+.\windows\video\h264-mpeg-transcode.ps1  # MPEG input/output
 .\windows\video\h264-flv-transcode.ps1  # FLV input
 .\windows\video\h264-wmv-transcode.ps1  # WMV input
-.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, M4V, MPG, WMV, then MP4 inputs
+.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, M4V, MPG, MPEG, WMV, then MP4 inputs
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\video\hevc-transcode.ps1
@@ -192,6 +196,7 @@ Process supported video files from the current directory downward:
 ./unix/video/h264-mov-transcode.sh -r
 ./unix/video/h264-m4v-transcode.sh -r
 ./unix/video/h264-mpg-transcode.sh -r
+./unix/video/h264-mpeg-transcode.sh -r
 ./unix/video/h264-flv-transcode.sh -r
 ./unix/video/h264-wmv-transcode.sh -r
 ./unix/video/transcode_all_video.sh -r
@@ -208,6 +213,7 @@ Process supported video files from the current directory downward:
 .\windows\video\h264-mov-transcode.ps1 -Recurse
 .\windows\video\h264-m4v-transcode.ps1 -Recurse
 .\windows\video\h264-mpg-transcode.ps1 -Recurse
+.\windows\video\h264-mpeg-transcode.ps1 -Recurse
 .\windows\video\h264-flv-transcode.ps1 -Recurse
 .\windows\video\h264-wmv-transcode.ps1 -Recurse
 .\windows\video\transcode_all_video.ps1 -Recurse
@@ -245,6 +251,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 ./unix/video/h264-mov-transcode.sh -r -q
 ./unix/video/h264-m4v-transcode.sh -r -q
 ./unix/video/h264-mpg-transcode.sh -r -q
+./unix/video/h264-mpeg-transcode.sh -r -q
 ./unix/video/h264-flv-transcode.sh -r -q
 ./unix/video/h264-wmv-transcode.sh -r -q
 ./unix/video/hevc-transcode.sh -q
@@ -256,6 +263,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 ./unix/video/h264-mov-transcode.sh -r -n
 ./unix/video/h264-m4v-transcode.sh -r -n
 ./unix/video/h264-mpg-transcode.sh -r -n
+./unix/video/h264-mpeg-transcode.sh -r -n
 ./unix/video/h264-flv-transcode.sh -r -n
 ./unix/video/h264-wmv-transcode.sh -r -n
 ./unix/video/hevc-transcode.sh -n
@@ -266,6 +274,7 @@ Use hardware encoders for significantly faster video processing (2-10x speedup).
 .\windows\video\h264-mov-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-m4v-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-mpg-transcode.ps1 -Recurse -UseNVENC
+.\windows\video\h264-mpeg-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-flv-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\h264-wmv-transcode.ps1 -Recurse -UseNVENC
 .\windows\video\hevc-transcode.ps1 -UseNVENC
@@ -362,7 +371,7 @@ Optional strict mode:
 
 ### "No eligible MP4/AVI/MOV/M4V files found to process"
 - The selected script found no matching input files that have not already been processed
-- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, `.mov`, `.m4v`, `.mpg`, `.flv`, `.wmv`, `.mkv`, `.flac`, or `.wav`
+- Check that your files use the extension for the script you ran: `.mp4`, `.avi`, `.mov`, `.m4v`, `.mpg`, `.mpeg`, `.flv`, `.wmv`, `.mkv`, `.flac`, or `.wav`
 - Check that you don't already have `*_REDU.mp4`, `*_HEVC.mp4`, or `*_HEVC.mkv` versions
 
 ### "ffmpeg failed" or "Output file verification failed"
