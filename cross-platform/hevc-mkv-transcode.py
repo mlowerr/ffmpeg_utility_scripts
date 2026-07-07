@@ -60,11 +60,17 @@ def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
     return video_codec, preset, quality_opts
 
 
+def is_temporary_transcode_path(path: Path) -> bool:
+    return ".tmp." in path.name.lower()
+
+
 def collect_files(root: Path, recurse: bool) -> List[Path]:
     discovery = root.rglob("*") if recurse else root.glob("*")
     candidates: List[Path] = []
     for file_path in discovery:
         if not file_path.is_file() or file_path.suffix.lower() != ".mkv":
+            continue
+        if is_temporary_transcode_path(file_path):
             continue
         candidates.append(file_path)
 
@@ -134,7 +140,20 @@ def transcode_file(
     TEMP_OUTPUT = temp_output
 
     if temp_output.exists():
-        temp_output.unlink()
+        print(f"Skipping '{file_path}': temporary output already exists at '{temp_output}'.", file=sys.stderr)
+        TEMP_OUTPUT = None
+        return
+    try:
+        temp_output.touch(exist_ok=False)
+    except FileExistsError:
+        print(f"Skipping '{file_path}': temporary output already exists at '{temp_output}'.", file=sys.stderr)
+        TEMP_OUTPUT = None
+        return
+    except OSError as exc:
+        print(f"Error: unable to create temporary output claim for '{file_path}': {exc}", file=sys.stderr)
+        TRANSCODE_FAILURES += 1
+        TEMP_OUTPUT = None
+        return
 
     print(f"\n\nProcessing file {index} of {total}\n")
     print(f"Transcoding '{file_path}' using {video_codec}...")
