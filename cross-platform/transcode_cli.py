@@ -12,6 +12,8 @@ from collections import deque
 from functools import lru_cache
 from pathlib import Path
 
+ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 6 * 60 * 60
+
 PROFILES = {
     "h264_mp4": {"ext": ".mp4", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
     "h264_avi": {"ext": ".avi", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
@@ -347,6 +349,14 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0):
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
+def tmp_age_seconds(path: Path):
+    return max(0.0, time.time() - path.stat().st_mtime)
+
+
+def zero_byte_tmp_claim_is_stale(path: Path):
+    return path.stat().st_size == 0 and tmp_age_seconds(path) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
+
+
 def claim_tmp_output(path: Path):
     """Atomically create the temporary output path as a same-directory claim.
 
@@ -563,7 +573,7 @@ def main():
                     print(f"Skipping {src}: temporary output is still changing at {tmp}.", file=sys.stderr)
                     duplicate_skips.append(f"Skipping {src}: temporary output is still changing at {tmp}.")
                     continue
-                if tmp.stat().st_size == 0:
+                if tmp.stat().st_size == 0 and not zero_byte_tmp_claim_is_stale(tmp):
                     msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
                     print(msg, file=sys.stderr)
                     duplicate_skips.append(msg)

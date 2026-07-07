@@ -8,16 +8,19 @@ audio/subtitle streams, writing output as .mkv for simple and fast processing.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import List, Sequence
 
 TRANSCODE_FAILURES = 0
 CLEANUP_WARNINGS = 0
 TEMP_OUTPUT: Path | None = None
+ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 6 * 60 * 60
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,6 +105,32 @@ def collect_files(root: Path, recurse: bool) -> List[Path]:
     return files_to_process
 
 
+def existing_tmp_is_stable(path: Path, delay: float = 1.0) -> bool:
+    try:
+        before = path.stat()
+    except FileNotFoundError:
+        return False
+    time.sleep(delay)
+    try:
+        after = path.stat()
+    except FileNotFoundError:
+        return False
+    return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
+
+
+def tmp_age_seconds(path: Path) -> float:
+    return max(0.0, time.time() - path.stat().st_mtime)
+
+
+def zero_byte_tmp_claim_is_stale(path: Path) -> bool:
+    return path.stat().st_size == 0 and tmp_age_seconds(path) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
+
+
+def claim_tmp_output(path: Path) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    os.close(fd)
+
+
 def run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=False, text=True, capture_output=True)
 
@@ -140,11 +169,18 @@ def transcode_file(
     TEMP_OUTPUT = temp_output
 
     if temp_output.exists():
-        print(f"Skipping '{file_path}': temporary output already exists at '{temp_output}'.", file=sys.stderr)
-        TEMP_OUTPUT = None
-        return
+        if not existing_tmp_is_stable(temp_output):
+            print(f"Skipping '{file_path}': temporary output is still changing at '{temp_output}'.", file=sys.stderr)
+            TEMP_OUTPUT = None
+            return
+        if temp_output.stat().st_size == 0 and not zero_byte_tmp_claim_is_stale(temp_output):
+            print(f"Skipping '{file_path}': temporary output claim already exists at '{temp_output}'.", file=sys.stderr)
+            TEMP_OUTPUT = None
+            return
+        print(f"Removing stale temporary output before retrying: '{temp_output}'", file=sys.stderr)
+        temp_output.unlink(missing_ok=True)
     try:
-        temp_output.touch(exist_ok=False)
+        claim_tmp_output(temp_output)
     except FileExistsError:
         print(f"Skipping '{file_path}': temporary output already exists at '{temp_output}'.", file=sys.stderr)
         TEMP_OUTPUT = None
