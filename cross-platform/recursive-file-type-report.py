@@ -30,6 +30,7 @@ def load_file_type_report_module() -> ModuleType:
         raise RuntimeError(f"could not load module from {module_path}")
 
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
