@@ -118,12 +118,14 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0) -> bool:
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
-def tmp_age_seconds(path: Path) -> float:
-    return max(0.0, time.time() - path.stat().st_mtime)
+def tmp_age_seconds(path: Path, stat_result=None) -> float:
+    stat_result = stat_result or path.stat()
+    return max(0.0, time.time() - stat_result.st_mtime)
 
 
-def zero_byte_tmp_claim_is_stale(path: Path) -> bool:
-    return path.stat().st_size == 0 and tmp_age_seconds(path) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
+def zero_byte_tmp_claim_is_stale(path: Path, stat_result=None) -> bool:
+    stat_result = stat_result or path.stat()
+    return stat_result.st_size == 0 and tmp_age_seconds(path, stat_result) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
 
 
 def claim_tmp_output(path: Path) -> None:
@@ -173,7 +175,13 @@ def transcode_file(
             print(f"Skipping '{file_path}': temporary output is still changing at '{temp_output}'.", file=sys.stderr)
             TEMP_OUTPUT = None
             return
-        if temp_output.stat().st_size == 0 and not zero_byte_tmp_claim_is_stale(temp_output):
+        try:
+            temp_stat = temp_output.stat()
+        except FileNotFoundError:
+            print(f"Skipping '{file_path}': temporary output disappeared before retry at '{temp_output}'.", file=sys.stderr)
+            TEMP_OUTPUT = None
+            return
+        if temp_stat.st_size == 0 and not zero_byte_tmp_claim_is_stale(temp_output, temp_stat):
             print(f"Skipping '{file_path}': temporary output claim already exists at '{temp_output}'.", file=sys.stderr)
             TEMP_OUTPUT = None
             return

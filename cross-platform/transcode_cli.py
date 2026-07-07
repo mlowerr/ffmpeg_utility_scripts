@@ -349,12 +349,14 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0):
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
-def tmp_age_seconds(path: Path):
-    return max(0.0, time.time() - path.stat().st_mtime)
+def tmp_age_seconds(path: Path, stat_result=None):
+    stat_result = stat_result or path.stat()
+    return max(0.0, time.time() - stat_result.st_mtime)
 
 
-def zero_byte_tmp_claim_is_stale(path: Path):
-    return path.stat().st_size == 0 and tmp_age_seconds(path) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
+def zero_byte_tmp_claim_is_stale(path: Path, stat_result=None):
+    stat_result = stat_result or path.stat()
+    return stat_result.st_size == 0 and tmp_age_seconds(path, stat_result) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
 
 
 def claim_tmp_output(path: Path):
@@ -573,7 +575,14 @@ def main():
                     print(f"Skipping {src}: temporary output is still changing at {tmp}.", file=sys.stderr)
                     duplicate_skips.append(f"Skipping {src}: temporary output is still changing at {tmp}.")
                     continue
-                if tmp.stat().st_size == 0 and not zero_byte_tmp_claim_is_stale(tmp):
+                try:
+                    tmp_stat = tmp.stat()
+                except FileNotFoundError:
+                    msg = f"Skipping {src}: temporary output disappeared before retry at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
+                if tmp_stat.st_size == 0 and not zero_byte_tmp_claim_is_stale(tmp, tmp_stat):
                     msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
                     print(msg, file=sys.stderr)
                     duplicate_skips.append(msg)
