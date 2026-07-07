@@ -20,7 +20,7 @@ from typing import List, Sequence
 TRANSCODE_FAILURES = 0
 CLEANUP_WARNINGS = 0
 TEMP_OUTPUT: Path | None = None
-ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 6 * 60 * 60
+ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
 
 
 def parse_args() -> argparse.Namespace:

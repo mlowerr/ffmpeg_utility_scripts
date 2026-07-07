@@ -12,7 +12,7 @@ from collections import deque
 from functools import lru_cache
 from pathlib import Path
 
-ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 6 * 60 * 60
+ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
 
 PROFILES = {
     "h264_mp4": {"ext": ".mp4", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
