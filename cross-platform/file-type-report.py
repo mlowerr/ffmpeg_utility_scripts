@@ -76,8 +76,19 @@ def discover_files(target_directory: Path, recursive: bool) -> list[Path]:
     return [path for path in discovery if path.is_file()]
 
 
-def count_file_types(files: list[Path]) -> Counter[str]:
-    """Count regular files by normalized file extension."""
+def count_file_types(
+    target_directory_or_files: Path | list[Path], recursive: bool = False
+) -> Counter[str]:
+    """Count regular files by normalized file extension.
+
+    Accepts either a pre-discovered file list or a target directory with the
+    legacy recursive flag used by recursive-file-type-report.py.
+    """
+    if isinstance(target_directory_or_files, Path):
+        files = discover_files(target_directory_or_files, recursive)
+    else:
+        files = target_directory_or_files
+
     counts: Counter[str] = Counter()
 
     for path in files:
