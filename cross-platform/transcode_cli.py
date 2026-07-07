@@ -370,6 +370,18 @@ def claim_tmp_output(path: Path):
     os.close(fd)
 
 
+def reclaim_tmp_output_for_retry(path: Path):
+    """Remove failed output and atomically reclaim the temp path before retrying.
+
+    Retry paths intentionally delete FFmpeg's partial output, but the temp path
+    must not remain unclaimed between attempts. Recreating the zero-byte claim
+    closes the race where another process could claim the same temp output and
+    then be overwritten by the retrying FFmpeg command.
+    """
+    path.unlink(missing_ok=True)
+    claim_tmp_output(path)
+
+
 HARDLINK_UNSUPPORTED_ERRNOS = {
     errno.EACCES,
     errno.EPERM,
@@ -619,8 +631,19 @@ def main():
             if returncode != 0 and cuda_decode_active:
                 print(f"CUDA decode failed for {src}; retrying with CPU decode and NVENC encode.", file=sys.stderr)
                 cuda_decode_active = False
-                if tmp.exists():
-                    tmp.unlink()
+                try:
+                    reclaim_tmp_output_for_retry(tmp)
+                except FileExistsError:
+                    msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    active_tmp = None
+                    continue
+                except OSError as exc:
+                    print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
+                    transcode_failures += 1
+                    active_tmp = None
+                    continue
                 cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
                 returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0:
@@ -634,8 +657,19 @@ def main():
                         active_tmp = None
                         continue
                     print(f"Audio copy failed for {src}; {fallback_reason}.")
-                    if tmp.exists():
-                        tmp.unlink()
+                    try:
+                        reclaim_tmp_output_for_retry(tmp)
+                    except FileExistsError:
+                        msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                        print(msg, file=sys.stderr)
+                        duplicate_skips.append(msg)
+                        active_tmp = None
+                        continue
+                    except OSError as exc:
+                        print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
+                        transcode_failures += 1
+                        active_tmp = None
+                        continue
                     cmd = build_video_cmd(
                         src,
                         tmp,
@@ -649,8 +683,19 @@ def main():
                     returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0 and cuda_decode_active:
                         print(f"CUDA decode failed for {src}; retrying audio fallback with CPU decode and NVENC encode.", file=sys.stderr)
-                        if tmp.exists():
-                            tmp.unlink()
+                        try:
+                            reclaim_tmp_output_for_retry(tmp)
+                        except FileExistsError:
+                            msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                            print(msg, file=sys.stderr)
+                            duplicate_skips.append(msg)
+                            active_tmp = None
+                            continue
+                        except OSError as exc:
+                            print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
+                            transcode_failures += 1
+                            active_tmp = None
+                            continue
                         cmd = build_video_cmd(
                             src,
                             tmp,
