@@ -633,6 +633,12 @@ def main():
                 cuda_decode_active = False
                 try:
                     reclaim_tmp_output_for_retry(tmp)
+                except FileExistsError:
+                    msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    active_tmp = None
+                    continue
                 except OSError as exc:
                     print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
                     transcode_failures += 1
@@ -653,6 +659,12 @@ def main():
                     print(f"Audio copy failed for {src}; {fallback_reason}.")
                     try:
                         reclaim_tmp_output_for_retry(tmp)
+                    except FileExistsError:
+                        msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                        print(msg, file=sys.stderr)
+                        duplicate_skips.append(msg)
+                        active_tmp = None
+                        continue
                     except OSError as exc:
                         print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
                         transcode_failures += 1
@@ -673,6 +685,12 @@ def main():
                         print(f"CUDA decode failed for {src}; retrying audio fallback with CPU decode and NVENC encode.", file=sys.stderr)
                         try:
                             reclaim_tmp_output_for_retry(tmp)
+                        except FileExistsError:
+                            msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                            print(msg, file=sys.stderr)
+                            duplicate_skips.append(msg)
+                            active_tmp = None
+                            continue
                         except OSError as exc:
                             print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
                             transcode_failures += 1
