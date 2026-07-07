@@ -12,6 +12,8 @@ from collections import deque
 from functools import lru_cache
 from pathlib import Path
 
+ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
+
 PROFILES = {
     "h264_mp4": {"ext": ".mp4", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
     "h264_avi": {"ext": ".avi", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
@@ -83,6 +85,10 @@ def is_path_under(parent: Path, child: Path):
 
 def should_skip_file(file_path: Path, skip_dirs):
     return any(is_path_under(skip_dir, file_path) for skip_dir in skip_dirs)
+
+
+def is_temporary_transcode_path(path: Path):
+    return ".tmp." in path.name.lower()
 
 
 def validate_quality_value(value, label):
@@ -343,6 +349,27 @@ def existing_tmp_is_stable(path: Path, delay: float = 1.0):
     return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
 
 
+def tmp_age_seconds(path: Path, stat_result=None):
+    stat_result = stat_result or path.stat()
+    return max(0.0, time.time() - stat_result.st_mtime)
+
+
+def zero_byte_tmp_claim_is_stale(path: Path, stat_result=None):
+    stat_result = stat_result or path.stat()
+    return stat_result.st_size == 0 and tmp_age_seconds(path, stat_result) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
+
+
+def claim_tmp_output(path: Path):
+    """Atomically create the temporary output path as a same-directory claim.
+
+    FFmpeg later overwrites this zero-byte file, but creating it before the
+    expensive transcode starts lets parallel script invocations notice that the
+    source is already claimed and skip it instead of duplicating work.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    os.close(fd)
+
+
 HARDLINK_UNSUPPORTED_ERRNOS = {
     errno.EACCES,
     errno.EPERM,
@@ -497,6 +524,8 @@ def main():
             continue
         if p.suffix.lower() != profile["ext"]:
             continue
+        if is_temporary_transcode_path(p):
+            continue
         if args.profile == "h264_mpg" and p.name.lower().endswith("_redu.mpg"):
             # Avoid reprocessing RM/RMVB outputs (and other already reduced MPG names)
             # into *_REDU_REDU.mp4 on subsequent runs.
@@ -546,8 +575,31 @@ def main():
                     print(f"Skipping {src}: temporary output is still changing at {tmp}.", file=sys.stderr)
                     duplicate_skips.append(f"Skipping {src}: temporary output is still changing at {tmp}.")
                     continue
+                try:
+                    tmp_stat = tmp.stat()
+                except FileNotFoundError:
+                    msg = f"Skipping {src}: temporary output disappeared before retry at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
+                if tmp_stat.st_size == 0 and not zero_byte_tmp_claim_is_stale(tmp, tmp_stat):
+                    msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
                 print(f"Removing stale temporary output before retrying: {tmp}", file=sys.stderr)
                 tmp.unlink(missing_ok=True)
+            try:
+                claim_tmp_output(tmp)
+            except FileExistsError:
+                msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                print(msg, file=sys.stderr)
+                duplicate_skips.append(msg)
+                continue
+            except OSError as exc:
+                print(f"Error: unable to create temporary output claim for {src}: {exc}", file=sys.stderr)
+                transcode_failures += 1
+                continue
             active_tmp = tmp
             cuda_decode_active = profile["mode"] == "video" and args.hw == "nvenc" and args.cuda_decode
             cmd = (
