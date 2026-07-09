@@ -19,6 +19,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Directory tree to scan for per-folder file type reports.",
     )
+    parser.add_argument(
+        "-d",
+        "--detailed",
+        action="store_true",
+        help=(
+            "Include temporary (.tmp...), already-transcoded (_REDU), and "
+            "remaining-to-transcode counts for each file type."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -63,8 +72,12 @@ def main() -> int:
     for index, directory in enumerate(directories):
         if index > 0:
             print("\n" + "=" * 72 + "\n")
-        counts = file_type_report.count_file_types(directory, recursive=False)
-        file_type_report.print_report(directory, False, counts)
+        files = file_type_report.discover_files(directory, recursive=False)
+        counts = file_type_report.count_file_types(files)
+        detailed_stats = (
+            file_type_report.collect_detailed_stats(files) if args.detailed else None
+        )
+        file_type_report.print_report(directory, False, counts, detailed_stats)
 
     return 0
 
