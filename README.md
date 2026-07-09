@@ -23,6 +23,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── file-type-report.py        # Count files by file type (Python, cross-platform)
 │   ├── files-by-extension.py      # List full paths matching an extension (Python, cross-platform)
 │   ├── recursive-file-type-report.py # Per-folder type reports (Python, cross-platform)
+│   ├── one-level-recursive-file-type-report.py # Combined child-folder reports
 │   └── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
 ├── unix/
 │   ├── video/
@@ -171,6 +172,9 @@ python3 ./cross-platform/hevc-mkv-transcode.py --threads 8
 python3 ./cross-platform/file-type-report.py /path/to/media
 python3 ./cross-platform/files-by-extension.py /path/to/media mp4
 python3 ./cross-platform/recursive-file-type-report.py /path/to/media
+python3 ./cross-platform/recursive-file-type-report.py --detailed /path/to/media
+python3 ./cross-platform/one-level-recursive-file-type-report.py
+python3 ./cross-platform/one-level-recursive-file-type-report.py --output /path/to/report.txt
 
 # Linux/macOS - Audio conversion to 256k MP3
 ./unix/audio/flac-to-mp3.sh
@@ -227,6 +231,7 @@ python3 ./cross-platform/hevc-mkv-transcode.py --recurse
 python3 ./cross-platform/hevc-mkv-transcode.py --recurse --threads 8
 python3 ./cross-platform/file-type-report.py --recursive /path/to/media
 python3 ./cross-platform/files-by-extension.py --recursive /path/to/media .mp4
+python3 ./cross-platform/recursive-file-type-report.py --detailed /path/to/media
 ```
 
 > Note: Transcoding wrappers now standardize on `-r` / `--recurse` for recursive operation.  
@@ -321,7 +326,7 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 ## How It Works
 
 1. **File Preparation**: If a selected input filename contains spaces, that file is renamed to use underscores immediately before encoding/conversion
-2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.m4v`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, or lists full paths for a requested extension
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.m4v`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, combines detailed recursive reports for direct child folders, or lists full paths for a requested extension
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
 4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
 5. **Verification**: Validates output file integrity with ffprobe
