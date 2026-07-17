@@ -71,6 +71,7 @@ class OneLevelRecursiveReportTests(unittest.TestCase):
             self.touch(root / "first" / "movie.mp4")
             self.touch(root / "first" / "done_REDU.avi")
             self.touch(root / "first" / "work.tmp.mov")
+            self.touch(root / "first" / "movie_REDU.tmp.mp4")
             (root / "first" / "empty").mkdir()
             self.touch(root / "second" / "done_REDU.mkv")
             self.touch(root / "second" / "ignored.txt")
@@ -79,8 +80,8 @@ class OneLevelRecursiveReportTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             summary = (root / "recursive-file-type-report-summary.txt").read_text()
-            self.assertIn("Total: 4", summary)
-            self.assertIn("Temporary: 1", summary)
+            self.assertIn("Total: 5", summary)
+            self.assertIn("Temporary: 2", summary)
             self.assertIn("Transcoded: 2", summary)
             self.assertIn("Remaining: 1", summary)
             self.assertIn(str(root / "first" / "empty"), summary)
