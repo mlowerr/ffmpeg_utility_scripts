@@ -7,13 +7,35 @@ import argparse
 import contextlib
 import importlib.util
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 DEFAULT_REPORT_NAME = "recursive-file-type-report.txt"
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class AggregateStats:
+    """Status totals and completed folders produced by a single tree scan."""
+
+    total: int = 0
+    temporary: int = 0
+    transcoded: int = 0
+    remaining: int = 0
+    folders_with_no_remaining: tuple[Path, ...] = ()
+
+
+@dataclass(frozen=True)
+class DirectoryReport:
+    """Precomputed report values for one scanned directory."""
+
+    child_directory: Path
+    directory: Path
+    counts: object
+    detailed_stats: dict[str, object]
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run detailed recursive file type reports for each direct child "
@@ -26,11 +48,22 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Report output path. Defaults to recursive-file-type-report.txt "
-            "in the directory where this wrapper is run."
+            "Detailed report output path. Defaults to "
+            "recursive-file-type-report.txt in the current directory."
         ),
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--summary-output",
+        type=Path,
+        default=None,
+        help="Summary output path. Defaults to the detailed filename with -summary appended.",
+    )
+    parser.add_argument(
+        "--all-file-types",
+        action="store_true",
+        help="Report every file type instead of only configured video profile types.",
+    )
+    return parser.parse_args(argv)
 
 
 def load_module(script_name: str, module_name: str) -> ModuleType:
@@ -54,54 +87,142 @@ def iter_child_directories(root_directory: Path) -> list[Path]:
     )
 
 
-def write_combined_report(output_path: Path, root_directory: Path) -> None:
-    """Write detailed recursive reports for each direct child directory."""
+def derive_summary_path(output_path: Path) -> Path:
+    """Return a distinct summary filename alongside the detailed report."""
+    return output_path.with_name(f"{output_path.stem}-summary{output_path.suffix}")
+
+
+def video_extensions() -> set[str]:
+    """Get video extensions from the canonical transcoding profiles."""
+    transcode_cli = load_module("transcode_cli.py", "transcode_cli_for_file_report")
+    return {
+        profile["ext"].lower()
+        for profile in transcode_cli.PROFILES.values()
+        if profile["mode"] == "video"
+    }
+
+
+def scan_reports(
+    root_directory: Path,
+    excluded_paths: set[Path],
+    all_file_types: bool,
+) -> tuple[list[Path], list[DirectoryReport], AggregateStats]:
+    """Traverse the tree once and compute detailed and aggregate report data."""
     recursive_report = load_module(
         "recursive-file-type-report.py", "recursive_file_type_report"
     )
     file_type_report = recursive_report.load_file_type_report_module()
+    allowed_extensions = None if all_file_types else video_extensions()
     child_directories = iter_child_directories(root_directory)
+    reports: list[DirectoryReport] = []
+    total = temporary = transcoded = remaining = 0
+    no_remaining: list[Path] = []
 
+    for child_directory in child_directories:
+        for directory in recursive_report.iter_directories(child_directory):
+            files = [
+                path
+                for path in file_type_report.discover_files(directory, recursive=False)
+                if path.resolve() not in excluded_paths
+                and (allowed_extensions is None or path.suffix.lower() in allowed_extensions)
+            ]
+            counts = file_type_report.count_file_types(files)
+            detailed_stats = file_type_report.collect_detailed_stats(files)
+            directory_remaining = sum(stats.remaining for stats in detailed_stats.values())
+            total += sum(stats.total for stats in detailed_stats.values())
+            temporary += sum(stats.temporary for stats in detailed_stats.values())
+            transcoded += sum(stats.transcoded for stats in detailed_stats.values())
+            remaining += directory_remaining
+            if directory_remaining == 0:
+                no_remaining.append(directory)
+            reports.append(
+                DirectoryReport(child_directory, directory, counts, detailed_stats)
+            )
+
+    return child_directories, reports, AggregateStats(
+        total, temporary, transcoded, remaining, tuple(no_remaining)
+    )
+
+
+def write_combined_report(
+    output_path: Path,
+    root_directory: Path,
+    child_directories: list[Path],
+    reports: list[DirectoryReport],
+    file_type_report: ModuleType,
+) -> None:
+    """Write precomputed detailed recursive reports."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as report_file:
         with contextlib.redirect_stdout(report_file):
             print(f"Combined detailed recursive file type report for: {root_directory}")
             print(f"Direct child folders scanned: {len(child_directories)}")
-
             if not child_directories:
                 print("\nNo direct child folders found.")
                 return
 
-            for child_index, child_directory in enumerate(child_directories):
-                if child_index > 0:
-                    print("\n" + "#" * 72 + "\n")
-                print(f"Child folder report for: {child_directory}")
-                directories = recursive_report.iter_directories(child_directory)
-                for directory_index, directory in enumerate(directories):
-                    if directory_index > 0:
-                        print("\n" + "=" * 72 + "\n")
-                    files = file_type_report.discover_files(directory, recursive=False)
-                    counts = file_type_report.count_file_types(files)
-                    detailed_stats = file_type_report.collect_detailed_stats(files)
-                    file_type_report.print_report(
-                        directory,
-                        False,
-                        counts,
-                        detailed_stats,
-                    )
+            previous_child = None
+            for report in reports:
+                if report.child_directory != previous_child:
+                    if previous_child is not None:
+                        print("\n" + "#" * 72 + "\n")
+                    print(f"Child folder report for: {report.child_directory}")
+                    previous_child = report.child_directory
+                elif report.directory != report.child_directory:
+                    print("\n" + "=" * 72 + "\n")
+                file_type_report.print_report(
+                    report.directory, False, report.counts, report.detailed_stats
+                )
 
 
-def main() -> int:
-    args = parse_args()
+def write_summary_report(
+    summary_path: Path, root_directory: Path, aggregate: AggregateStats
+) -> None:
+    """Write aggregate status totals without a per-extension table."""
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with summary_path.open("w", encoding="utf-8") as summary_file:
+        print(f"Combined file type summary for: {root_directory}", file=summary_file)
+        print(f"Total: {aggregate.total}", file=summary_file)
+        print(f"Temporary: {aggregate.temporary}", file=summary_file)
+        print(f"Transcoded: {aggregate.transcoded}", file=summary_file)
+        print(f"Remaining: {aggregate.remaining}", file=summary_file)
+        print("\nFolders with no files left to transcode:", file=summary_file)
+        if aggregate.folders_with_no_remaining:
+            for directory in aggregate.folders_with_no_remaining:
+                print(directory, file=summary_file)
+        else:
+            print("None", file=summary_file)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     root_directory = Path.cwd().resolve()
     output_path = (
         args.output.expanduser().resolve()
         if args.output is not None
         else root_directory / DEFAULT_REPORT_NAME
     )
+    summary_path = (
+        args.summary_output.expanduser().resolve()
+        if args.summary_output is not None
+        else derive_summary_path(output_path)
+    )
+    if output_path == summary_path:
+        print("Error: detailed and summary output paths must be different", file=sys.stderr)
+        return 1
 
     try:
-        write_combined_report(output_path, root_directory)
+        child_directories, reports, aggregate = scan_reports(
+            root_directory, {output_path, summary_path}, args.all_file_types
+        )
+        recursive_report = load_module(
+            "recursive-file-type-report.py", "recursive_file_type_report_writer"
+        )
+        file_type_report = recursive_report.load_file_type_report_module()
+        write_combined_report(
+            output_path, root_directory, child_directories, reports, file_type_report
+        )
+        write_summary_report(summary_path, root_directory, aggregate)
     except OSError as error:
         print(f"Error: could not write report: {error}", file=sys.stderr)
         return 1
@@ -110,6 +231,7 @@ def main() -> int:
         return 1
 
     print(f"Wrote combined report: {output_path}")
+    print(f"Wrote summary report: {summary_path}")
     return 0
 
 
