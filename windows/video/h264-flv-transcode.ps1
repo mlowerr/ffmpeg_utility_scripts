@@ -1,4 +1,4 @@
-param([Alias("c")][switch]$CudaDecode,[switch]$Recurse,[switch]$UseQuickSync,[switch]$UseNVENC,[switch]$UseAMF,[int]$Threads,[string[]]$SkipDir,[int]$Quality,[string]$ConfigPath)
+param([Alias("c")][switch]$CudaDecode,[switch]$Recurse,[switch]$UseQuickSync,[switch]$UseNVENC,[switch]$UseAMF,[int]$Threads,[string[]]$SkipDir,[int]$Quality,[string]$ConfigPath,[switch]$Resume,[double]$SegmentDuration)
 $hw = "software"
 if ($UseQuickSync) { $hw = "qsv" } elseif ($UseNVENC) { $hw = "nvenc" } elseif ($UseAMF) { $hw = "amf" }
 $args = @("--profile", "h264_flv", "--hw", $hw)
@@ -8,6 +8,8 @@ if ($PSBoundParameters.ContainsKey("Quality")) { $args += @("--quality", $Qualit
 if ($PSBoundParameters.ContainsKey("ConfigPath")) { $args += @("--config", $ConfigPath) }
 if ($SkipDir) { foreach ($d in $SkipDir) { $args += @("--skip-dir", $d) } }
 if ($CudaDecode) { $args += "--cuda-decode" }
+if ($Resume) { $args += "--resume" }
+if ($PSBoundParameters.ContainsKey("SegmentDuration")) { $args += @("--segment-duration", $SegmentDuration) }
 $cliPath = Join-Path $PSScriptRoot "..\..\cross-platform\transcode_cli.py"
 if (Get-Command py -ErrorAction SilentlyContinue) {
     & py -3 $cliPath @args

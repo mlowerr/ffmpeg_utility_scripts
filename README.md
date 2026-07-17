@@ -408,3 +408,34 @@ These scripts are provided as-is for personal and commercial use. No warranty is
 ## Contributing
 
 Feel free to submit issues or pull requests for bug fixes and improvements.
+
+## Checkpoint/resume mode
+
+Video profiles support an opt-in segmented checkpoint mode. Pass `--resume` and,
+optionally, `--segment-duration SECONDS` (300 seconds by default). The equivalent
+configuration keys are `"resume": true` and `"segment_duration": 300`.
+For example:
+
+```json
+{
+  "resume": true,
+  "segment_duration": 120
+}
+```
+
+Each input gets a hidden, source-specific working directory beside the source.
+It contains a versioned manifest and independently probeable, timestamp-normalized
+segments. A restart reuses only segments whose manifest still describes the same
+canonical source, file size/mtime, profile, codec/backend, quality, threads,
+filters, mappings, and segment duration. Incompatible state is quarantined rather
+than mixed with a new encode. An atomic ownership lock prevents concurrent use;
+stale recovery requires an expired lease as well as a non-matching exact process
+identity (boot and process-start identity), rather than trusting a reusable PID.
+
+Completed checkpoints remain after interruption or any failed transcode. They are
+removed only after the concatenated output passes duration and stream validation
+and is finalized without overwriting an existing destination. Legacy monolithic
+`*.tmp.mp4` and `*.tmp.mkv` files are **not resumable**: FFmpeg does not guarantee
+that a partially written container is independently valid, so these files continue
+to be removed and transcoded from the beginning. Only checkpoints created by
+segmented resume mode are reusable.
