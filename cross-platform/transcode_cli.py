@@ -34,7 +34,7 @@ PROFILES = {
     "hevc_mkv_legacy": {"ext": ".mkv", "suffix": "_HEVC", "out_ext": ".mkv", "mode": "video", "quality": 26},
     "mkv_shrink": {"ext": ".mkv", "suffix": "_small", "out_ext": ".mp4", "mode": "video", "quality": 28,
                    "video_filter": "scale=-2:1080,fps=30", "audio_codec": "aac", "audio_bitrate": "96k",
-                   "preserve_source": True},
+                   "preserve_source": True, "video_codec_family": "hevc"},
     "flac_mp3": {"ext": ".flac", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
     "wav_mp3": {"ext": ".wav", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
 }
@@ -97,6 +97,23 @@ def should_skip_file(file_path: Path, skip_dirs):
 
 def is_temporary_transcode_path(path: Path):
     return ".tmp." in path.name.lower()
+
+
+def is_checkpoint_internal_path(path: Path):
+    """Return true for files retained inside checkpoint or quarantine trees."""
+    return any(".transcode-checkpoint-" in part for part in path.parts)
+
+
+def discover_paths(root: Path, recurse: bool):
+    """Discover files while pruning checkpoint and quarantine directory trees."""
+    if not recurse:
+        yield from root.glob("*")
+        return
+    for directory, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if ".transcode-checkpoint-" not in name]
+        parent = Path(directory)
+        for name in filenames:
+            yield parent / name
 
 
 def validate_quality_value(value, label):
@@ -251,8 +268,10 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     cuda_filter = None
-    is_hevc = profile["suffix"].startswith("_HEVC")
-    needs_uhd_fallback = profile["suffix"] == "_REDU" or (is_hevc and profile["out_ext"] == ".mp4")
+    is_hevc = profile.get("video_codec_family") == "hevc" or profile["suffix"].startswith("_HEVC")
+    needs_uhd_fallback = profile["suffix"] == "_REDU" or (
+        profile["suffix"].startswith("_HEVC") and profile["out_ext"] == ".mp4"
+    )
 
     if is_hevc:
         codec = "libx265"
@@ -512,6 +531,11 @@ def build_segment_cmd(base_cmd, src, destination, start, duration, has_audio=Tru
     del output
     if cmd[-1] == "-y":
         cmd.pop()
+    # Checkpoints always use Matroska segments, even for an eventual MP4 output.
+    # Drop output-container-only MP4 flags inherited from the monolithic command.
+    while "-movflags" in cmd:
+        option = cmd.index("-movflags")
+        del cmd[option:option + 2]
     input_at = cmd.index("-i")
     cmd[input_at:input_at] = ["-ss", f"{start:.6f}"]
     # -t is an output option here and must follow the input URL. Inserting it
@@ -551,6 +575,9 @@ def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, qua
         prototype = build_video_cmd(src, Path("SEGMENT.mkv"), profile, hw, threads,
                                     quality_override=quality, cuda_decode=cuda_decode,
                                     force_audio_fallback=force_audio_fallback)
+        while "-movflags" in prototype:
+            option = prototype.index("-movflags")
+            del prototype[option:option + 2]
         signature = checkpoint_signature(src, profile_name, profile, hw, threads, quality,
                                          segment_duration, prototype)
         manifest_path = workdir / "manifest.json"
@@ -584,6 +611,14 @@ def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, qua
             cmd = build_segment_cmd(prototype, src, active_segment, start, length,
                                     has_audio=expected["audio"] > 0)
             rc, stderr = run_ffmpeg_with_progress(cmd, *progress_args, src)
+            if rc != 0 and cuda_decode:
+                active_segment.unlink(missing_ok=True)
+                active_segment = None
+                quarantine_checkpoint(workdir, "CUDA decode failed; retrying with CPU decode")
+                return transcode_with_checkpoints(
+                    src, tmp, profile_name, profile, hw, threads, quality, segment_duration,
+                    False, progress_args, force_audio_fallback=force_audio_fallback,
+                )
             if rc != 0 or not validate_segment(active_segment, expected, length):
                 active_segment.unlink(missing_ok=True)
                 active_segment = None
@@ -836,10 +871,12 @@ def main():
         print("Warning: checkpoint/resume applies only to video profiles; using monolithic audio transcoding.", file=sys.stderr)
         resume_enabled = False
 
-    files = root.rglob("*") if args.recurse else root.glob("*")
+    files = discover_paths(root, args.recurse)
     candidates = []
     for p in files:
         if not p.is_file():
+            continue
+        if is_checkpoint_internal_path(p):
             continue
         if p.suffix.lower() != profile["ext"]:
             continue

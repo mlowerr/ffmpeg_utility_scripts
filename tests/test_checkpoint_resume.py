@@ -28,6 +28,18 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(checkpoint.parent, self.source.parent)
         self.assertIn(self.source.name, checkpoint.name)
 
+    def test_recursive_discovery_excludes_checkpoint_and_quarantine_files(self):
+        checkpoint_file = cli.checkpoint_path(self.source) / "segment-00000000.mkv"
+        quarantine_file = Path(str(cli.checkpoint_path(self.source)) + ".quarantine-1-deadbeef") / "segment.mkv"
+        checkpoint_file.parent.mkdir()
+        checkpoint_file.write_bytes(b"checkpoint")
+        quarantine_file.parent.mkdir()
+        quarantine_file.write_bytes(b"quarantine")
+        self.assertTrue(cli.is_checkpoint_internal_path(checkpoint_file))
+        self.assertTrue(cli.is_checkpoint_internal_path(quarantine_file))
+        self.assertFalse(cli.is_checkpoint_internal_path(self.source))
+        self.assertEqual(list(cli.discover_paths(self.root, True)), [self.source])
+
     def test_signature_detects_source_and_encoding_changes(self):
         command = cli.build_video_cmd(self.source, Path("segment.mkv"), self.profile, "software", 2, 24)
         first = cli.checkpoint_signature(self.source, "hevc_mkv", self.profile, "software", 2, 24, 30, command)
@@ -141,15 +153,49 @@ class CheckpointTests(unittest.TestCase):
         encoded_base = cli.build_video_cmd(self.source, Path("unused.mp4"), encoded_profile, "software", 0, 28)
         encoded_command = cli.build_segment_cmd(encoded_base, self.source, self.root / "encoded.mkv", 0, 30, True)
         self.assertIn("-af", encoded_command)
+        self.assertNotIn("-movflags", encoded_command)
 
     def test_mkv_shrink_preserves_source_and_legacy_profiles_support_fallback(self):
         self.assertTrue(cli.PROFILES["mkv_shrink"]["preserve_source"])
+        shrink_command = cli.build_video_cmd(
+            self.source, Path("segment.mp4"), cli.PROFILES["mkv_shrink"], "software", 0, 28,
+        )
+        self.assertEqual(shrink_command[shrink_command.index("-c:v") + 1], "libx265")
         with mock.patch.object(cli, "detect_dimensions", return_value=(1280, 720)):
             fallback = cli.build_video_cmd(
                 self.source, Path("segment.mkv"), cli.PROFILES["h264_avi"], "software", 0, 26,
                 force_audio_fallback=True,
             )
         self.assertEqual(fallback[fallback.index("-c:a") + 1], "aac")
+
+    def test_checkpoint_cuda_decode_failure_retries_with_cpu_decode(self):
+        source_info = {"duration": 1.0, "video": 1, "audio": 0, "subtitle": 0}
+        segment_commands = []
+
+        def encode(cmd, *_args):
+            segment_commands.append(cmd)
+            if len(segment_commands) == 1:
+                return 1, "CUDA decoder failed"
+            Path(cmd[-1]).write_bytes(b"segment")
+            return 0, ""
+
+        def concat(cmd):
+            Path(cmd[-1]).write_bytes(b"combined")
+            return 0, ""
+
+        output = self.root / "movie.tmp.mkv"
+        with mock.patch.object(cli, "probe_media", return_value=source_info), \
+                mock.patch.object(cli, "validate_segment", return_value=True), \
+                mock.patch.object(cli, "run_ffmpeg_with_progress", side_effect=encode), \
+                mock.patch.object(cli, "run_ffmpeg", side_effect=concat), \
+                mock.patch.object(cli, "cuda_scale_filter", return_value=None):
+            workdir = cli.transcode_with_checkpoints(
+                self.source, output, "hevc_mkv", self.profile, "nvenc", 0, 26,
+                2.0, True, (1, 1),
+            )
+        self.assertIn("-hwaccel", segment_commands[0])
+        self.assertNotIn("-hwaccel", segment_commands[1])
+        self.assertTrue(workdir.exists())
 
     def test_successful_cleanup_removes_entire_checkpoint(self):
         work = cli.checkpoint_path(self.source)
