@@ -112,7 +112,7 @@ def collect_detailed_stats(files: list[Path]) -> dict[str, FileTypeStats]:
         totals[file_type] += 1
         if is_temporary:
             temporary[file_type] += 1
-        if is_transcoded:
+        elif is_transcoded:
             transcoded[file_type] += 1
         if not is_temporary and not is_transcoded:
             remaining[file_type] += 1
