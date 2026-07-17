@@ -119,28 +119,31 @@ def scan_reports(
     no_remaining: list[Path] = []
 
     for child_directory in child_directories:
-        for directory in recursive_report.iter_directories(child_directory):
-            files = [
-                path
-                for path in file_type_report.discover_files(directory, recursive=False)
-                if path.resolve() not in excluded_paths
-                and (allowed_extensions is None or path.suffix.lower() in allowed_extensions)
-            ]
-            counts = file_type_report.count_file_types(files)
-            detailed_stats = file_type_report.collect_detailed_stats(files)
-            directory_remaining = sum(stats.remaining for stats in detailed_stats.values())
-            total += sum(stats.total for stats in detailed_stats.values())
-            temporary += sum(stats.temporary for stats in detailed_stats.values())
-            transcoded += sum(stats.transcoded for stats in detailed_stats.values())
-            remaining += directory_remaining
-            if directory_remaining == 0:
-                no_remaining.append(directory)
-            reports.append(
-                DirectoryReport(child_directory, directory, counts, detailed_stats)
+        files = [
+            path
+            for path in file_type_report.discover_files(child_directory, recursive=True)
+            if path.resolve() not in excluded_paths
+            and (
+                allowed_extensions is None or path.suffix.lower() in allowed_extensions
             )
+        ]
+        counts = file_type_report.count_file_types(files)
+        detailed_stats = file_type_report.collect_detailed_stats(files)
+        directory_remaining = sum(stats.remaining for stats in detailed_stats.values())
+        total += sum(stats.total for stats in detailed_stats.values())
+        temporary += sum(stats.temporary for stats in detailed_stats.values())
+        transcoded += sum(stats.transcoded for stats in detailed_stats.values())
+        remaining += directory_remaining
+        if directory_remaining == 0:
+            no_remaining.append(child_directory)
+        reports.append(
+            DirectoryReport(child_directory, child_directory, counts, detailed_stats)
+        )
 
-    return child_directories, reports, AggregateStats(
-        total, temporary, transcoded, remaining, tuple(no_remaining)
+    return (
+        child_directories,
+        reports,
+        AggregateStats(total, temporary, transcoded, remaining, tuple(no_remaining)),
     )
 
 
@@ -161,17 +164,12 @@ def write_combined_report(
                 print("\nNo direct child folders found.")
                 return
 
-            previous_child = None
-            for report in reports:
-                if report.child_directory != previous_child:
-                    if previous_child is not None:
-                        print("\n" + "#" * 72 + "\n")
-                    print(f"Child folder report for: {report.child_directory}")
-                    previous_child = report.child_directory
-                elif report.directory != report.child_directory:
-                    print("\n" + "=" * 72 + "\n")
+            for index, report in enumerate(reports):
+                if index > 0:
+                    print("\n" + "#" * 72 + "\n")
+                print(f"Child folder report for: {report.child_directory}")
                 file_type_report.print_report(
-                    report.directory, False, report.counts, report.detailed_stats
+                    report.directory, True, report.counts, report.detailed_stats
                 )
 
 
@@ -208,7 +206,10 @@ def main(argv: list[str] | None = None) -> int:
         else derive_summary_path(output_path)
     )
     if output_path == summary_path:
-        print("Error: detailed and summary output paths must be different", file=sys.stderr)
+        print(
+            "Error: detailed and summary output paths must be different",
+            file=sys.stderr,
+        )
         return 1
 
     try:
