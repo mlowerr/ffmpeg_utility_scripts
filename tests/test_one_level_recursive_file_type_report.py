@@ -8,7 +8,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPT = (
     Path(__file__).resolve().parents[1]
     / "cross-platform"
@@ -17,7 +16,9 @@ SCRIPT = (
 
 
 class OneLevelRecursiveReportTests(unittest.TestCase):
-    def run_report(self, root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    def run_report(
+        self, root: Path, *arguments: str
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, str(SCRIPT), *arguments],
             cwd=root,
@@ -84,9 +85,52 @@ class OneLevelRecursiveReportTests(unittest.TestCase):
             self.assertIn("Temporary: 2", summary)
             self.assertIn("Transcoded: 2", summary)
             self.assertIn("Remaining: 1", summary)
-            self.assertIn(str(root / "first" / "empty"), summary)
             self.assertIn(str(root / "second"), summary)
             self.assertNotIn(f"\n{root / 'first'}\n", summary)
+            self.assertNotIn(str(root / "first" / "empty"), summary)
+
+    def test_aggregates_each_direct_child_tree_into_one_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for child in ("a", "b", "c", "d"):
+                for descendant in ("x", "y", "z"):
+                    (root / child / descendant).mkdir(parents=True)
+
+            self.touch(root / "a" / "direct.mp4")
+            self.touch(root / "a" / "x" / "nested.avi")
+            self.touch(root / "a" / "x" / "deep" / "deeper.mkv")
+            self.touch(root / "b" / "direct.mov")
+            self.touch(root / "b" / "y" / "nested.flv")
+            self.touch(root / "c" / "z" / "deep" / "done_REDU.wmv")
+
+            result = self.run_report(root)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            detailed = (root / "recursive-file-type-report.txt").read_text()
+            expected_totals = {"a": 3, "b": 2, "c": 1, "d": 0}
+            self.assertEqual(detailed.count("Child folder report for:"), 4)
+            self.assertEqual(detailed.count("File type report for:"), 4)
+            for child, expected_total in expected_totals.items():
+                heading = f"File type report for: {root / child}"
+                section = detailed.split(heading, maxsplit=1)[1].split(
+                    "Child folder report for:", maxsplit=1
+                )[0]
+                self.assertIn("Scan mode: recursive", section)
+                self.assertIn(f"Total files: {expected_total}", section)
+
+            for child in ("a", "b", "c", "d"):
+                for descendant in ("x", "y", "z"):
+                    self.assertNotIn(
+                        f"File type report for: {root / child / descendant}", detailed
+                    )
+            self.assertNotIn(
+                "File type report for: " + str(root / "a" / "x" / "deep"), detailed
+            )
+
+            summary = (root / "recursive-file-type-report-summary.txt").read_text()
+            self.assertIn("Total: 6", summary)
+            self.assertIn(str(root / "d"), summary)
+            self.assertNotIn(str(root / "d" / "x"), summary)
 
     def test_empty_tree_writes_zero_totals(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -136,7 +180,10 @@ class OneLevelRecursiveReportTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 1)
-            self.assertIn("Error: detailed and summary output paths must be different", result.stderr)
+            self.assertIn(
+                "Error: detailed and summary output paths must be different",
+                result.stderr,
+            )
             self.assertFalse(output.exists())
 
 
