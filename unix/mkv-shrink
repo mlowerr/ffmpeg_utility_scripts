@@ -5,9 +5,15 @@ shopt -s nocaseglob
 
 RECURSE=false
 RESUME=false
+HW="software"
+CUDA_DECODE=false
+THREADS="8"
+QUALITY=""
+CONFIG=""
 SEGMENT_DURATION=""
 SEARCH_DIR="."
-usage() { echo "Usage: $0 [-r] [--resume] [--segment-duration seconds] [directory]"; }
+SKIP_DIRS=()
+usage() { echo "Usage: $0 [-r] [-q|-n|-a] [-t threads] [--quality n] [--config path] [--skip-dir path] [-c|--cuda-decode] [--resume] [--segment-duration seconds] [directory]"; }
 need_value() {
     if [[ $# -lt 2 || -z "${2:-}" ]]; then
         echo "Error: $1 requires a value." >&2
@@ -18,6 +24,14 @@ need_value() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -r|--recurse) RECURSE=true; shift ;;
+        -q) HW="qsv"; shift ;;
+        -n) HW="nvenc"; shift ;;
+        -a) HW="amf"; shift ;;
+        -t|--threads) need_value "$1" "${2-}"; THREADS="$2"; shift 2 ;;
+        --quality) need_value "$1" "${2-}"; QUALITY="$2"; shift 2 ;;
+        --config) need_value "$1" "${2-}"; CONFIG="$2"; shift 2 ;;
+        --skip-dir) need_value "$1" "${2-}"; SKIP_DIRS+=("$2"); shift 2 ;;
+        -c|--cuda-decode) CUDA_DECODE=true; shift ;;
         --resume) RESUME=true; shift ;;
         --segment-duration) need_value "$1" "${2-}"; SEGMENT_DURATION="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -25,8 +39,14 @@ while [[ $# -gt 0 ]]; do
         *) SEARCH_DIR="$1"; shift ;;
     esac
 done
-args=(--profile mkv_shrink --path "$SEARCH_DIR" --threads 8)
+args=(--profile mkv_shrink --path "$SEARCH_DIR" --threads "$THREADS" --hw "$HW")
 [[ "$RECURSE" == true ]] && args+=(--recurse)
+[[ -n "$QUALITY" ]] && args+=(--quality "$QUALITY")
+[[ -n "$CONFIG" ]] && args+=(--config "$CONFIG")
+[[ "$CUDA_DECODE" == true ]] && args+=(--cuda-decode)
 [[ "$RESUME" == true ]] && args+=(--resume)
 [[ -n "$SEGMENT_DURATION" ]] && args+=(--segment-duration "$SEGMENT_DURATION")
+for d in "${SKIP_DIRS[@]}"; do
+    args+=(--skip-dir "$d")
+done
 exec python3 "$(dirname "$0")/../cross-platform/transcode_cli.py" "${args[@]}"
