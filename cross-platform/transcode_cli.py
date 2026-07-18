@@ -17,6 +17,7 @@ from pathlib import Path
 ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
 CHECKPOINT_SCHEMA_VERSION = 1
 CHECKPOINT_LOCK_STALE_SECONDS = 48 * 60 * 60
+CHECKPOINT_DURATION_TOLERANCE_SECONDS = 0.5
 
 PROFILES = {
     "h264_mp4": {"ext": ".mp4", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
@@ -34,7 +35,7 @@ PROFILES = {
     "hevc_mkv_legacy": {"ext": ".mkv", "suffix": "_HEVC", "out_ext": ".mkv", "mode": "video", "quality": 26},
     "mkv_shrink": {"ext": ".mkv", "suffix": "_small", "out_ext": ".mp4", "mode": "video", "quality": 28,
                    "video_filter": "scale=-2:1080,fps=30", "audio_codec": "aac", "audio_bitrate": "96k",
-                   "preserve_source": True, "video_codec_family": "hevc"},
+                   "preserve_source": True, "video_codec_family": "hevc", "preset": "veryfast"},
     "flac_mp3": {"ext": ".flac", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
     "wav_mp3": {"ext": ".wav", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
 }
@@ -275,7 +276,7 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
 
     if is_hevc:
         codec = "libx265"
-        preset = "medium"
+        preset = profile.get("preset", "medium")
         qopts = ["-crf", str(q)]
         if hw == "qsv":
             codec, preset, qopts = "hevc_qsv", "medium", ["-global_quality", str(q)]
@@ -285,7 +286,7 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
             codec, preset, qopts = "hevc_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
     else:
         codec = "libx264"
-        preset = "veryfast"
+        preset = profile.get("preset", "veryfast")
         qopts = ["-crf", str(q)]
         if hw == "qsv":
             codec, preset, qopts = "h264_qsv", "fast", ["-global_quality", str(q)]
@@ -494,10 +495,28 @@ def validate_segment(path, expected, expected_duration=None):
         return False
     duration_ok = True
     if expected_duration is not None:
-        duration_ok = abs(actual["duration"] - expected_duration) <= max(0.25, expected_duration * 0.02)
+        tolerance = min(CHECKPOINT_DURATION_TOLERANCE_SECONDS, max(0.10, expected_duration * 0.002))
+        duration_ok = abs(actual["duration"] - expected_duration) <= tolerance
     return path.is_file() and path.stat().st_size > 0 and duration_ok and actual["video"] >= 1 \
         and actual["audio"] == expected["audio"] \
         and actual["subtitle"] == expected["subtitle"]
+
+
+def manifest_segment_path(workdir: Path, entry, position: int):
+    """Return a checked checkpoint segment path for a manifest entry."""
+    if not isinstance(entry, dict):
+        raise ValueError("manifest segment entry is corrupt")
+    expected_name = f"segment-{position:08d}.mkv"
+    filename = entry.get("file")
+    if entry.get("index") != position or filename != expected_name:
+        raise ValueError(f"manifest segment entry does not match expected segment {position}")
+    if Path(filename).name != filename:
+        raise ValueError(f"manifest segment path escapes checkpoint directory: {filename}")
+    segment = (workdir / filename).resolve()
+    root = workdir.resolve()
+    if segment.parent != root:
+        raise ValueError(f"manifest segment path escapes checkpoint directory: {filename}")
+    return segment
 
 
 def validate_completed_segments(workdir, manifest, expected, manifest_path):
@@ -506,9 +525,7 @@ def validate_completed_segments(workdir, manifest, expected, manifest_path):
     if not isinstance(completed, list):
         raise ValueError("manifest completed list is corrupt")
     for position, entry in enumerate(list(completed)):
-        if not isinstance(entry, dict):
-            raise ValueError("manifest segment entry is corrupt")
-        segment = workdir / entry.get("file", "")
+        segment = manifest_segment_path(workdir, entry, position)
         if not validate_segment(segment, expected, entry.get("source_duration")):
             if position != len(completed) - 1:
                 raise ValueError(f"non-trailing checkpoint segment is invalid: {segment}")
@@ -551,7 +568,7 @@ def build_segment_cmd(base_cmd, src, destination, start, duration, has_audio=Tru
     else:
         cmd[insert_at:insert_at] = ["-vf", "setpts=PTS-STARTPTS"]
         insert_at += 2
-    cmd[insert_at:insert_at] = ["-force_key_frames", "expr:gte(t,0)"]
+    cmd[insert_at:insert_at] = ["-force_key_frames", "expr:eq(n,0)"]
     audio_codec = cmd[cmd.index("-c:a") + 1] if "-c:a" in cmd else None
     if has_audio and audio_codec != "copy":
         cmd += ["-af", "asetpts=PTS-STARTPTS"]
@@ -647,7 +664,7 @@ def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, qua
         if rc != 0:
             raise RuntimeError(ffmpeg_error_context(stderr, src))
         combined = probe_media(tmp)
-        tolerance = max(2.0, segment_duration * .10)
+        tolerance = CHECKPOINT_DURATION_TOLERANCE_SECONDS
         if combined["video"] < 1 or combined["audio"] != expected["audio"] \
                 or combined["subtitle"] != expected["subtitle"] \
                 or abs(combined["duration"] - source_info["duration"]) > tolerance:

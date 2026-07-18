@@ -69,6 +69,14 @@ class CheckpointTests(unittest.TestCase):
         with mock.patch.object(cli, "probe_media", return_value=streams):
             self.assertTrue(cli.validate_segment(segment, {"audio": 0, "subtitle": 0}, 3.0))
             self.assertFalse(cli.validate_segment(segment, {"audio": 0, "subtitle": 0}, 1.0))
+            self.assertFalse(cli.validate_segment(segment, {"audio": 0, "subtitle": 0}, 2.0))
+
+
+    def test_duration_tolerance_is_bounded_for_large_segments(self):
+        segment = self.root / "segment.mkv"
+        segment.write_bytes(b"ok")
+        with mock.patch.object(cli, "probe_media", return_value={"duration": 3599.0, "video": 1, "audio": 0, "subtitle": 0}):
+            self.assertFalse(cli.validate_segment(segment, {"audio": 0, "subtitle": 0}, 3600.0))
 
     def test_crash_retains_completed_segments_and_discards_only_trailing_corruption(self):
         manifest_path = self.root / "manifest.json"
@@ -77,7 +85,6 @@ class CheckpointTests(unittest.TestCase):
             segment = self.root / f"segment-{number:08d}.mkv"
             segment.write_bytes(b"complete")
             manifest["completed"].append({"index": number, "file": segment.name})
-        manifest["completed"][-1]["file"] = "segment-00000002.writing.mkv"
         (self.root / manifest["completed"][-1]["file"]).write_bytes(b"partial")
         with mock.patch.object(cli, "validate_segment", side_effect=[True, True, False]):
             retained = cli.validate_completed_segments(
@@ -85,10 +92,28 @@ class CheckpointTests(unittest.TestCase):
             )
         self.assertEqual([entry["index"] for entry in retained], [0, 1])
         self.assertTrue((self.root / "segment-00000000.mkv").exists())
-        self.assertFalse((self.root / "segment-00000002.writing.mkv").exists())
+        self.assertFalse((self.root / "segment-00000002.mkv").exists())
+
+
+    def test_manifest_segment_paths_must_stay_inside_checkpoint(self):
+        manifest = {"completed": [{"index": 0, "file": "../victim.mkv"}]}
+        with self.assertRaisesRegex(ValueError, "escapes|does not match"):
+            cli.validate_completed_segments(
+                self.root, manifest, {"audio": 0, "subtitle": 0}, self.root / "manifest.json"
+            )
+
+        manifest = {"completed": [{"index": 0, "file": "segment-00000000.mkv"}]}
+        segment = self.root / "segment-00000000.mkv"
+        segment.write_bytes(b"ok")
+        with mock.patch.object(cli, "validate_segment", return_value=True):
+            retained = cli.validate_completed_segments(
+                self.root, manifest, {"audio": 0, "subtitle": 0}, self.root / "manifest.json"
+            )
+        self.assertEqual(retained, manifest["completed"])
 
     def test_corrupt_non_trailing_segment_rejects_whole_resume(self):
-        manifest = {"completed": [{"file": "bad.mkv"}, {"file": "good.mkv"}]}
+        manifest = {"completed": [{"index": 0, "file": "segment-00000000.mkv"},
+                                 {"index": 1, "file": "segment-00000001.mkv"}]}
         with mock.patch.object(cli, "validate_segment", return_value=False):
             with self.assertRaisesRegex(ValueError, "non-trailing"):
                 cli.validate_completed_segments(self.root, manifest, {"audio": 0, "subtitle": 0}, self.root / "manifest.json")
@@ -139,7 +164,7 @@ class CheckpointTests(unittest.TestCase):
         rendered = " ".join(map(str, command))
         self.assertIn("setpts=PTS-STARTPTS", rendered)
         self.assertIn("asetpts=PTS-STARTPTS", rendered)
-        self.assertIn("-force_key_frames expr:gte(t,0)", rendered)
+        self.assertIn("-force_key_frames expr:eq(n,0)", rendered)
         self.assertIn("-ss 60.000000", rendered)
         input_index = command.index("-i")
         self.assertEqual(command[input_index + 1], str(self.source))
@@ -161,6 +186,7 @@ class CheckpointTests(unittest.TestCase):
             self.source, Path("segment.mp4"), cli.PROFILES["mkv_shrink"], "software", 0, 28,
         )
         self.assertEqual(shrink_command[shrink_command.index("-c:v") + 1], "libx265")
+        self.assertEqual(shrink_command[shrink_command.index("-preset") + 1], "veryfast")
         with mock.patch.object(cli, "detect_dimensions", return_value=(1280, 720)):
             fallback = cli.build_video_cmd(
                 self.source, Path("segment.mkv"), cli.PROFILES["h264_avi"], "software", 0, 26,
