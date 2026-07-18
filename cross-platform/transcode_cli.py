@@ -869,6 +869,9 @@ def main():
         print("Error: config key 'skip_dirs' must be a list", file=sys.stderr)
         return 1
     raw_skip_dirs = [*config_skip_dirs, *args.skip_dir]
+    if any(not isinstance(d, str) or not d for d in raw_skip_dirs):
+        print("Error: skip directory entries must be non-empty strings", file=sys.stderr)
+        return 1
     skip_dirs = normalize_skip_dirs(raw_skip_dirs, root)
     try:
         selected_quality = effective_quality(args.profile, profile, config, args.quality)

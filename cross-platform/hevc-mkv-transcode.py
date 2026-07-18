@@ -21,12 +21,18 @@ def main():
             translated += ["--hw", "nvenc"]
         elif arg in ("-a", "--amf"):
             translated += ["--hw", "amf"]
-        elif arg in ("-t", "--threads", "--quality", "--config", "--segment-duration"):
+        elif arg in ("-t", "--threads", "--quality", "--config", "--skip-dir", "--segment-duration"):
             try:
                 translated += ["--threads" if arg == "-t" else arg, next(args)]
             except StopIteration:
                 print(f"Error: {arg} requires a value", file=sys.stderr)
                 return 1
+        elif arg.startswith(("--threads=", "--quality=", "--config=", "--skip-dir=", "--segment-duration=")):
+            option, value = arg.split("=", 1)
+            if not value:
+                print(f"Error: {option} requires a value", file=sys.stderr)
+                return 1
+            translated.append(arg)
         elif arg in ("--resume", "--strict-cleanup", "-c", "--cuda-decode"):
             translated.append(arg)
         elif arg in ("-h", "--help"):
