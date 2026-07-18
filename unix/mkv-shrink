@@ -1,124 +1,32 @@
 #!/bin/bash
-set -euo pipefail
+set -u
 shopt -s nullglob
 shopt -s nocaseglob
 
-# --- Argument parsing ---------------------------------------------------------
-recursive=false
-search_dir="."
-FAILED_COUNT=0
-ACTIVE_TMP=""
-
-usage() {
-    echo "Usage: $0 [-r] [directory]"
-    echo "  -r  Recursively search for .mkv files (no depth limit)"
-    exit 1
-}
-
-cleanup_active_tmp() {
-    if [[ -n "$ACTIVE_TMP" && -e "$ACTIVE_TMP" ]]; then
-        rm -f -- "$ACTIVE_TMP"
-    fi
-}
-
-trap 'cleanup_active_tmp; exit 130' INT
-trap 'cleanup_active_tmp; exit 143' TERM
-
-valid_output() {
-    local candidate="$1"
-    [[ -s "$candidate" ]] && ffprobe -v error "$candidate" >/dev/null 2>&1
-}
-
-tmp_is_stable() {
-    local candidate="$1"
-    local before_size
-    local before_mtime
-    local after_size
-    local after_mtime
-
-    before_size=$(stat -c %s -- "$candidate" 2>/dev/null) || return 1
-    before_mtime=$(stat -c %Y -- "$candidate" 2>/dev/null) || return 1
-    sleep 1
-    after_size=$(stat -c %s -- "$candidate" 2>/dev/null) || return 1
-    after_mtime=$(stat -c %Y -- "$candidate" 2>/dev/null) || return 1
-
-    [[ "$before_size" == "$after_size" && "$before_mtime" == "$after_mtime" ]]
-}
-
-while getopts "rh" opt; do
-    case $opt in
-        r) recursive=true ;;
-        h) usage ;;
-        *) usage ;;
-    esac
-done
-shift $((OPTIND - 1))
-
-if [[ $# -gt 0 ]]; then
-    search_dir="$1"
-    if [[ ! -d "$search_dir" ]]; then
-        echo "Error: '$search_dir' is not a directory" >&2
+RECURSE=false
+RESUME=false
+SEGMENT_DURATION=""
+SEARCH_DIR="."
+usage() { echo "Usage: $0 [-r] [--resume] [--segment-duration seconds] [directory]"; }
+need_value() {
+    if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "Error: $1 requires a value." >&2
+        usage >&2
         exit 1
     fi
-fi
-
-# --- Build find command -------------------------------------------------------
-find_opts=(-type f -iname "*.mkv" -print0)
-
-if [[ "$recursive" == false ]]; then
-    find_opts=(-maxdepth 1 "${find_opts[@]}")
-fi
-
-# --- Transcode loop -----------------------------------------------------------
-while IFS= read -r -d '' f; do
-    out="${f%.[Mm][Kk][Vv]}_small.mp4"
-    tmp="${f%.[Mm][Kk][Vv]}_small.tmp.mp4"
-
-    if [[ -f "$out" ]]; then
-        echo "Skipping (exists): $out"
-        continue
-    fi
-
-    if [[ -e "$tmp" ]]; then
-        if ! tmp_is_stable "$tmp"; then
-            echo "Skipping (temporary output is still changing): $tmp" >&2
-            continue
-        fi
-
-        echo "Removing stale temporary output before retrying: $tmp" >&2
-        rm -f -- "$tmp"
-    fi
-
-    echo "Transcoding: $f"
-    ACTIVE_TMP="$tmp"
-    if ffmpeg -nostdin -threads 8 \
-        -i "$f" \
-        -map "0:v:0" -map "0:a?" \
-        -vf "scale=-2:1080,fps=30" \
-        -c:v libx265 -preset veryfast -crf 28 \
-        -x265-params "pools=8" \
-        -c:a aac -b:a 96k \
-        -movflags +faststart \
-        -y "$tmp"; then
-        if valid_output "$tmp"; then
-            if mv -n -- "$tmp" "$out"; then
-                echo "Successfully processed: $f -> $out"
-            else
-                echo "Error: Failed to move temporary output into place: $tmp -> $out" >&2
-                rm -f -- "$tmp"
-                ((FAILED_COUNT += 1))
-            fi
-        else
-            echo "Error: Output verification failed: $tmp" >&2
-            rm -f -- "$tmp"
-            ((FAILED_COUNT += 1))
-        fi
-    else
-        echo "Error: ffmpeg failed: $f" >&2
-        rm -f -- "$tmp"
-        ((FAILED_COUNT += 1))
-    fi
-    ACTIVE_TMP=""
-done < <(find "$search_dir" "${find_opts[@]}")
-
-exit $(( FAILED_COUNT > 0 ? 1 : 0 ))
+}
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -r|--recurse) RECURSE=true; shift ;;
+        --resume) RESUME=true; shift ;;
+        --segment-duration) need_value "$1" "${2-}"; SEGMENT_DURATION="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        -*) usage >&2; exit 1 ;;
+        *) SEARCH_DIR="$1"; shift ;;
+    esac
+done
+args=(--profile mkv_shrink --path "$SEARCH_DIR" --threads 8)
+[[ "$RECURSE" == true ]] && args+=(--recurse)
+[[ "$RESUME" == true ]] && args+=(--resume)
+[[ -n "$SEGMENT_DURATION" ]] && args+=(--segment-duration "$SEGMENT_DURATION")
+exec python3 "$(dirname "$0")/../cross-platform/transcode_cli.py" "${args[@]}"

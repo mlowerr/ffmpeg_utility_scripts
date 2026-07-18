@@ -1,329 +1,41 @@
 #!/usr/bin/env python3
-"""Cross-platform HEVC/H.265 MKV transcoder.
+"""Compatibility entry point for the shared HEVC MKV transcoder.
 
-Transcodes .mkv files to HEVC while preserving primary video plus all
-audio/subtitle streams, writing output as .mkv for simple and fast processing.
+The implementation lives in transcode_cli.py so checkpoint validation, locking,
+segmentation, concatenation, and finalization are identical on every platform.
 """
-
-from __future__ import annotations
-
-import argparse
-import os
-import shutil
-import signal
-import subprocess
 import sys
-import time
-from pathlib import Path
-from typing import List, Sequence
 
-TRANSCODE_FAILURES = 0
-CLEANUP_WARNINGS = 0
-TEMP_OUTPUT: Path | None = None
-ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
+import transcode_cli
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Transcode MKV files to HEVC/H.265")
-    parser.add_argument("-r", "--recurse", action="store_true", help="Process recursively")
-    parser.add_argument("-q", "--quick-sync", action="store_true", help="Use Intel Quick Sync")
-    parser.add_argument("-n", "--nvenc", action="store_true", help="Use NVIDIA NVENC")
-    parser.add_argument("-a", "--amf", action="store_true", help="Use AMD AMF")
-    parser.add_argument(
-        "-t",
-        "--threads",
-        type=int,
-        default=0,
-        help="Limit ffmpeg/x265 thread usage (positive integer, software mode recommended)",
-    )
-    parser.add_argument("--strict-cleanup", action="store_true", help="Treat source cleanup issues as hard failures")
-    args = parser.parse_args()
-    if args.threads < 0:
-        parser.error("--threads must be zero or a positive integer")
-    return args
-
-
-def resolve_encoder(args: argparse.Namespace) -> tuple[str, str, List[str]]:
-    video_codec = "libx265"
-    preset = "medium"
-    quality_opts = ["-crf", "26"]
-
-    if args.quick_sync:
-        video_codec = "hevc_qsv"
-        quality_opts = ["-global_quality", "26"]
-    elif args.nvenc:
-        video_codec = "hevc_nvenc"
-        preset = "p4"
-        quality_opts = ["-rc", "vbr", "-cq", "26"]
-    elif args.amf:
-        video_codec = "hevc_amf"
-        preset = "speed"
-        quality_opts = ["-qp_i", "26", "-qp_p", "26", "-qp_b", "26"]
-
-    return video_codec, preset, quality_opts
-
-
-def is_temporary_transcode_path(path: Path) -> bool:
-    return ".tmp." in path.name.lower()
-
-
-def collect_files(root: Path, recurse: bool) -> List[Path]:
-    discovery = root.rglob("*") if recurse else root.glob("*")
-    candidates: List[Path] = []
-    for file_path in discovery:
-        if not file_path.is_file() or file_path.suffix.lower() != ".mkv":
-            continue
-        if is_temporary_transcode_path(file_path):
-            continue
-        candidates.append(file_path)
-
-    renamed_candidates: List[Path] = []
-    for file_path in candidates:
-        current_path = file_path
-        if " " in current_path.name:
-            renamed_path = current_path.with_name(current_path.name.replace(" ", "_"))
-            if renamed_path.exists():
-                print(
-                    f"Warning: skipping rename '{current_path}' -> '{renamed_path}' (target exists)",
-                    file=sys.stderr,
-                )
-            else:
-                current_path.rename(renamed_path)
-                print(f"Renamed: '{current_path}' -> '{renamed_path}'")
-                current_path = renamed_path
-        renamed_candidates.append(current_path)
-
-    files_to_process: List[Path] = []
-    existing_after_rename = {path for path in renamed_candidates if path.exists()}
-    for current_path in renamed_candidates:
-        if current_path.name.lower().endswith("_hevc.mkv"):
-            continue
-        output = current_path.with_name(f"{current_path.stem}_HEVC.mkv")
-        if output in existing_after_rename:
-            continue
-        files_to_process.append(current_path)
-    return files_to_process
-
-
-def existing_tmp_is_stable(path: Path, delay: float = 1.0) -> bool:
-    try:
-        before = path.stat()
-    except FileNotFoundError:
-        return False
-    time.sleep(delay)
-    try:
-        after = path.stat()
-    except FileNotFoundError:
-        return False
-    return before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
-
-
-def tmp_age_seconds(path: Path, stat_result=None) -> float:
-    stat_result = stat_result or path.stat()
-    return max(0.0, time.time() - stat_result.st_mtime)
-
-
-def zero_byte_tmp_claim_is_stale(path: Path, stat_result=None) -> bool:
-    stat_result = stat_result or path.stat()
-    return stat_result.st_size == 0 and tmp_age_seconds(path, stat_result) >= ZERO_BYTE_TMP_CLAIM_STALE_SECONDS
-
-
-def claim_tmp_output(path: Path) -> None:
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-    os.close(fd)
-
-
-def run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=False, text=True, capture_output=True)
-
-
-def stream_count(path: Path, selector: str) -> int:
-    proc = run([
-        "ffprobe",
-        "-v",
-        "error",
-        "-select_streams",
-        selector,
-        "-show_entries",
-        "stream=index",
-        "-of",
-        "csv=p=0",
-        str(path),
-    ])
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return 0
-    return len([line for line in proc.stdout.splitlines() if line.strip()])
-
-
-def transcode_file(
-    file_path: Path,
-    index: int,
-    total: int,
-    video_codec: str,
-    preset: str,
-    quality_opts: Sequence[str],
-    threads: int,
-) -> None:
-    global TRANSCODE_FAILURES, CLEANUP_WARNINGS, TEMP_OUTPUT
-
-    output = file_path.with_name(f"{file_path.stem}_HEVC.mkv")
-    temp_output = file_path.with_name(f"{file_path.stem}_HEVC.tmp.mkv")
-    TEMP_OUTPUT = temp_output
-
-    if temp_output.exists():
-        if not existing_tmp_is_stable(temp_output):
-            print(f"Skipping '{file_path}': temporary output is still changing at '{temp_output}'.", file=sys.stderr)
-            TEMP_OUTPUT = None
-            return
-        try:
-            temp_stat = temp_output.stat()
-        except FileNotFoundError:
-            print(f"Skipping '{file_path}': temporary output disappeared before retry at '{temp_output}'.", file=sys.stderr)
-            TEMP_OUTPUT = None
-            return
-        if temp_stat.st_size == 0 and not zero_byte_tmp_claim_is_stale(temp_output, temp_stat):
-            print(f"Skipping '{file_path}': temporary output claim already exists at '{temp_output}'.", file=sys.stderr)
-            TEMP_OUTPUT = None
-            return
-        print(f"Removing stale temporary output before retrying: '{temp_output}'", file=sys.stderr)
-        temp_output.unlink(missing_ok=True)
-    try:
-        claim_tmp_output(temp_output)
-    except FileExistsError:
-        print(f"Skipping '{file_path}': temporary output already exists at '{temp_output}'.", file=sys.stderr)
-        TEMP_OUTPUT = None
-        return
-    except OSError as exc:
-        print(f"Error: unable to create temporary output claim for '{file_path}': {exc}", file=sys.stderr)
-        TRANSCODE_FAILURES += 1
-        TEMP_OUTPUT = None
-        return
-
-    print(f"\n\nProcessing file {index} of {total}\n")
-    print(f"Transcoding '{file_path}' using {video_codec}...")
-    thread_opts: List[str] = []
-    x265_opts: List[str] = []
-    if threads > 0:
-        thread_opts = ["-threads", str(threads)]
-        if video_codec == "libx265":
-            x265_opts = ["-x265-params", f"pools={threads}"]
-
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-stats",
-        "-i",
-        str(file_path),
-        "-map",
-        "0:v:0?",
-        "-map",
-        "0:a?",
-        "-map",
-        "0:s?",
-        "-c:v",
-        video_codec,
-        *x265_opts,
-        *quality_opts,
-        "-preset",
-        preset,
-        "-c:a",
-        "copy",
-        "-c:s",
-        "copy",
-        "-map_metadata",
-        "-1",
-        *thread_opts,
-        "-y",
-        str(temp_output),
-    ]
-
-    result = subprocess.run(ffmpeg_cmd, check=False)
-    print()
-
-    if result.returncode != 0:
-        print(f"Error: ffmpeg failed on '{file_path}'. Keeping source.", file=sys.stderr)
-        if temp_output.exists():
-            temp_output.unlink()
-        TRANSCODE_FAILURES += 1
-        TEMP_OUTPUT = None
-        return
-
-    if not temp_output.exists() or temp_output.stat().st_size == 0:
-        print(f"Error: Temporary output '{temp_output}' is empty. Keeping source.", file=sys.stderr)
-        if temp_output.exists():
-            temp_output.unlink()
-        TRANSCODE_FAILURES += 1
-        TEMP_OUTPUT = None
-        return
-
-    verify = run(["ffprobe", "-v", "error", str(temp_output)])
-    if verify.returncode != 0:
-        print(f"Error: Output verification failed for '{file_path}'. Keeping source.", file=sys.stderr)
-        temp_output.unlink(missing_ok=True)
-        TRANSCODE_FAILURES += 1
-        TEMP_OUTPUT = None
-        return
-
-    in_audio = stream_count(file_path, "a")
-    out_audio = stream_count(temp_output, "a")
-    if in_audio > 0 and out_audio < in_audio:
-        print(
-            f"Error: Audio stream count mismatch for '{file_path}' ({in_audio} input, {out_audio} output). Keeping source.",
-            file=sys.stderr,
-        )
-        temp_output.unlink(missing_ok=True)
-        TRANSCODE_FAILURES += 1
-        TEMP_OUTPUT = None
-        return
-
-    shutil.move(str(temp_output), str(output))
-    try:
-        file_path.unlink()
-        print(f"Successfully transcoded '{file_path}' to '{output}'. Source deleted.")
-    except OSError as exc:
-        print(
-            f"Warning: source cleanup failed for '{file_path}': {exc}. Output kept at '{output}'.",
-            file=sys.stderr,
-        )
-        CLEANUP_WARNINGS += 1
-    TEMP_OUTPUT = None
-
-
-def cleanup_and_exit(*_: object) -> None:
-    if TEMP_OUTPUT and TEMP_OUTPUT.exists():
-        TEMP_OUTPUT.unlink(missing_ok=True)
-    sys.exit(1)
-
-
-def main() -> int:
-    args = parse_args()
-    video_codec, preset, quality_opts = resolve_encoder(args)
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, cleanup_and_exit)
-
-    files = collect_files(Path.cwd(), args.recurse)
-    if not files:
-        print("No eligible MKV files found to process.")
-        return 0
-
-    total = len(files)
-    for idx, file_path in enumerate(files, start=1):
-        transcode_file(file_path, idx, total, video_codec, preset, quality_opts, args.threads)
-
-    if CLEANUP_WARNINGS > 0:
-        print(
-            f"\nCleanup warning summary: {CLEANUP_WARNINGS} source cleanup issue(s). Output files were kept.",
-            file=sys.stderr,
-        )
-
-    hard_failures = TRANSCODE_FAILURES
-    if args.strict_cleanup:
-        hard_failures += CLEANUP_WARNINGS
-
-    return 1 if hard_failures > 0 else 0
+def main():
+    translated = ["--profile", "hevc_mkv_legacy"]
+    args = iter(sys.argv[1:])
+    for arg in args:
+        if arg in ("-r", "--recurse"):
+            translated.append("--recurse")
+        elif arg in ("-q", "--quick-sync"):
+            translated += ["--hw", "qsv"]
+        elif arg in ("-n", "--nvenc"):
+            translated += ["--hw", "nvenc"]
+        elif arg in ("-a", "--amf"):
+            translated += ["--hw", "amf"]
+        elif arg in ("-t", "--threads", "--quality", "--config", "--segment-duration"):
+            try:
+                translated += ["--threads" if arg == "-t" else arg, next(args)]
+            except StopIteration:
+                print(f"Error: {arg} requires a value", file=sys.stderr)
+                return 1
+        elif arg in ("--resume", "--strict-cleanup", "-c", "--cuda-decode"):
+            translated.append(arg)
+        elif arg in ("-h", "--help"):
+            translated.append("--help")
+        else:
+            print(f"Error: unrecognized argument: {arg}", file=sys.stderr)
+            return 1
+    sys.argv[1:] = translated
+    return transcode_cli.main()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import errno
 import json
 import os
@@ -8,11 +9,15 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 from collections import deque
 from functools import lru_cache
 from pathlib import Path
 
 ZERO_BYTE_TMP_CLAIM_STALE_SECONDS = 45 * 60
+CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_LOCK_STALE_SECONDS = 48 * 60 * 60
+CHECKPOINT_DURATION_TOLERANCE_SECONDS = 0.5
 
 PROFILES = {
     "h264_mp4": {"ext": ".mp4", "suffix": "_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
@@ -27,6 +32,10 @@ PROFILES = {
     "h264_rmvb": {"ext": ".rmvb", "suffix": "_REDU", "out_ext": ".mpg", "mode": "video", "quality": 26},
     "hevc_mp4": {"ext": ".mp4", "suffix": "_HEVC_REDU", "out_ext": ".mp4", "mode": "video", "quality": 26},
     "hevc_mkv": {"ext": ".mkv", "suffix": "_HEVC_REDU", "out_ext": ".mkv", "mode": "video", "quality": 26},
+    "hevc_mkv_legacy": {"ext": ".mkv", "suffix": "_HEVC", "out_ext": ".mkv", "mode": "video", "quality": 26},
+    "mkv_shrink": {"ext": ".mkv", "suffix": "_small", "out_ext": ".mp4", "mode": "video", "quality": 28,
+                   "video_filter": "scale=-2:1080,fps=30", "audio_codec": "aac", "audio_bitrate": "96k",
+                   "preserve_source": True, "video_codec_family": "hevc", "preset": "veryfast"},
     "flac_mp3": {"ext": ".flac", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
     "wav_mp3": {"ext": ".wav", "suffix": "", "out_ext": ".mp3", "mode": "audio"},
 }
@@ -89,6 +98,23 @@ def should_skip_file(file_path: Path, skip_dirs):
 
 def is_temporary_transcode_path(path: Path):
     return ".tmp." in path.name.lower()
+
+
+def is_checkpoint_internal_path(path: Path):
+    """Return true for files retained inside checkpoint or quarantine trees."""
+    return any(".transcode-checkpoint-" in part for part in path.parts)
+
+
+def discover_paths(root: Path, recurse: bool):
+    """Discover files while pruning checkpoint and quarantine directory trees."""
+    if not recurse:
+        yield from root.glob("*")
+        return
+    for directory, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if ".transcode-checkpoint-" not in name]
+        parent = Path(directory)
+        for name in filenames:
+            yield parent / name
 
 
 def validate_quality_value(value, label):
@@ -243,11 +269,14 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     cuda_filter = None
-    needs_uhd_fallback = profile["suffix"] == "_REDU" or (profile["suffix"] == "_HEVC" and profile["out_ext"] == ".mp4")
+    is_hevc = profile.get("video_codec_family") == "hevc" or profile["suffix"].startswith("_HEVC")
+    needs_uhd_fallback = profile["suffix"] == "_REDU" or (
+        profile["suffix"].startswith("_HEVC") and profile["out_ext"] == ".mp4"
+    )
 
-    if profile["suffix"] == "_HEVC":
+    if is_hevc:
         codec = "libx265"
-        preset = "medium"
+        preset = profile.get("preset", "medium")
         qopts = ["-crf", str(q)]
         if hw == "qsv":
             codec, preset, qopts = "hevc_qsv", "medium", ["-global_quality", str(q)]
@@ -257,7 +286,7 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
             codec, preset, qopts = "hevc_amf", "speed", ["-qp_i", str(q), "-qp_p", str(q), "-qp_b", str(q)]
     else:
         codec = "libx264"
-        preset = "veryfast"
+        preset = profile.get("preset", "veryfast")
         qopts = ["-crf", str(q)]
         if hw == "qsv":
             codec, preset, qopts = "h264_qsv", "fast", ["-global_quality", str(q)]
@@ -304,15 +333,19 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     ]
     if profile["out_ext"] == ".mkv":
         cmd += ["-map", "0:s?", "-c:s", "copy"]
-    audio_opts = ["-c:a", "copy"]
+    audio_opts = ["-c:a", profile.get("audio_codec", "copy")]
+    if profile.get("audio_bitrate"):
+        audio_opts += ["-b:a", profile["audio_bitrate"]]
     if force_audio_fallback:
         fallback_codec = "mp2" if profile["out_ext"] == ".mpeg" else "aac"
         audio_opts = ["-c:a", fallback_codec, "-b:a", "192k"]
+    if profile.get("video_filter"):
+        scale_opts = ["-vf", profile["video_filter"]]
     cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, *audio_opts, "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
         cmd += ["-movflags", "+faststart"]
 
-    if profile["suffix"] == "_HEVC" and codec == "libx265" and threads:
+    if is_hevc and codec == "libx265" and threads:
         cmd += ["-x265-params", f"pools={threads}"]
 
     if threads:
@@ -334,6 +367,316 @@ def count_audio(path):
     if p.returncode != 0:
         return 0
     return len([x for x in p.stdout.splitlines() if x.strip()])
+
+
+def probe_media(path: Path):
+    """Return the duration and stream inventory used for checkpoint validation."""
+    proc = run_capture([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type",
+        "-of", "json", str(path),
+    ])
+    if proc.returncode != 0:
+        raise ValueError(f"ffprobe could not parse {path}")
+    try:
+        data = json.loads(proc.stdout)
+        duration = float(data.get("format", {}).get("duration", 0))
+        streams = [item.get("codec_type") for item in data.get("streams", [])]
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid ffprobe response for {path}: {exc}") from exc
+    return {"duration": duration, "video": streams.count("video"),
+            "audio": streams.count("audio"), "subtitle": streams.count("subtitle")}
+
+
+def atomic_json_write(path: Path, value):
+    pending = path.with_name(path.name + f".{uuid.uuid4().hex}.pending")
+    with pending.open("w", encoding="utf-8", newline="\n") as handle:
+        json.dump(value, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(pending, path)
+
+
+def checkpoint_path(src: Path):
+    canonical = str(src.resolve())
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return src.parent / f".{src.name}.transcode-checkpoint-{digest}"
+
+
+def process_identity():
+    """PID plus boot/process-start identities prevent PID-reuse-only lock decisions."""
+    boot = "unknown"
+    started = "unknown"
+    try:
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        started = Path(f"/proc/{os.getpid()}/stat").read_text(encoding="ascii").split()[21]
+    except (OSError, IndexError):
+        started = str(time.time_ns())
+    return {"pid": os.getpid(), "boot_id": boot, "process_start": started,
+            "token": uuid.uuid4().hex, "claimed_at": time.time()}
+
+
+def lock_owner_alive(owner):
+    if owner.get("boot_id") == "unknown":
+        return False
+    try:
+        if Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip() != owner["boot_id"]:
+            return False
+        stat = Path(f"/proc/{int(owner['pid'])}/stat").read_text(encoding="ascii").split()
+        return stat[21] == str(owner.get("process_start"))
+    except (OSError, ValueError, KeyError, IndexError):
+        return False
+
+
+class CheckpointLock:
+    def __init__(self, workdir: Path):
+        self.directory = workdir / "lock"
+        self.owner = process_identity()
+
+    def acquire(self):
+        self.directory.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.directory.mkdir()
+        except FileExistsError:
+            try:
+                current = json.loads((self.directory / "owner.json").read_text(encoding="utf-8"))
+                age = time.time() - float(current.get("claimed_at", 0))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                current = {}
+                try:
+                    age = time.time() - self.directory.stat().st_mtime
+                except OSError:
+                    age = 0
+            # Recovery requires both a dead exact process identity and an expired lease.
+            if lock_owner_alive(current) or age < CHECKPOINT_LOCK_STALE_SECONDS:
+                raise FileExistsError(f"checkpoint is owned by another invocation: {self.directory}")
+            stale = self.directory.with_name(f"lock.stale-{int(time.time())}-{uuid.uuid4().hex[:8]}")
+            try:
+                os.rename(self.directory, stale)
+                shutil.rmtree(stale, ignore_errors=True)
+                self.directory.mkdir()
+            except OSError as exc:
+                raise FileExistsError(f"could not recover checkpoint lock: {exc}") from exc
+        atomic_json_write(self.directory / "owner.json", self.owner)
+
+    def release(self):
+        try:
+            current = json.loads((self.directory / "owner.json").read_text(encoding="utf-8"))
+            if current.get("token") == self.owner["token"]:
+                shutil.rmtree(self.directory)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+
+def checkpoint_signature(src, profile_name, profile, hw, threads, quality, segment_duration, command):
+    stat = src.stat()
+    codec = command[command.index("-c:v") + 1]
+    def option_values(flag):
+        return [command[i + 1] for i, item in enumerate(command[:-1]) if item == flag]
+    filters = option_values("-vf") + ["setpts=PTS-STARTPTS"]
+    if "-c:a" in command and command[command.index("-c:a") + 1] != "copy":
+        filters.append("asetpts=PTS-STARTPTS")
+    return {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "source_path": str(src.resolve()), "source_size": stat.st_size,
+        "source_mtime_ns": stat.st_mtime_ns, "profile": profile_name,
+        "output_extension": profile["out_ext"], "codec": codec, "hardware_backend": hw,
+        "quality": quality, "threads": threads or 0,
+        "filters": filters,
+        "stream_mappings": option_values("-map"), "segment_duration": segment_duration,
+        "command_options": command[1:-2],
+    }
+
+
+def validate_segment(path, expected, expected_duration=None):
+    try:
+        actual = probe_media(path)
+    except ValueError:
+        return False
+    duration_ok = True
+    if expected_duration is not None:
+        tolerance = min(CHECKPOINT_DURATION_TOLERANCE_SECONDS, max(0.10, expected_duration * 0.002))
+        duration_ok = abs(actual["duration"] - expected_duration) <= tolerance
+    return path.is_file() and path.stat().st_size > 0 and duration_ok and actual["video"] >= 1 \
+        and actual["audio"] == expected["audio"] \
+        and actual["subtitle"] == expected["subtitle"]
+
+
+def manifest_segment_path(workdir: Path, entry, position: int):
+    """Return a checked checkpoint segment path for a manifest entry."""
+    if not isinstance(entry, dict):
+        raise ValueError("manifest segment entry is corrupt")
+    expected_name = f"segment-{position:08d}.mkv"
+    filename = entry.get("file")
+    if entry.get("index") != position or filename != expected_name:
+        raise ValueError(f"manifest segment entry does not match expected segment {position}")
+    if Path(filename).name != filename:
+        raise ValueError(f"manifest segment path escapes checkpoint directory: {filename}")
+    segment = (workdir / filename).resolve()
+    root = workdir.resolve()
+    if segment.parent != root:
+        raise ValueError(f"manifest segment path escapes checkpoint directory: {filename}")
+    return segment
+
+
+def validate_completed_segments(workdir, manifest, expected, manifest_path):
+    """Validate retained segments, allowing only an invalid final entry to be retried."""
+    completed = manifest.get("completed")
+    if not isinstance(completed, list):
+        raise ValueError("manifest completed list is corrupt")
+    for position, entry in enumerate(list(completed)):
+        segment = manifest_segment_path(workdir, entry, position)
+        if not validate_segment(segment, expected, entry.get("source_duration")):
+            if position != len(completed) - 1:
+                raise ValueError(f"non-trailing checkpoint segment is invalid: {segment}")
+            segment.unlink(missing_ok=True)
+            completed.pop()
+            atomic_json_write(manifest_path, manifest)
+    return completed
+
+
+def quarantine_checkpoint(workdir: Path, reason: str):
+    target = workdir.with_name(f"{workdir.name}.quarantine-{int(time.time())}-{uuid.uuid4().hex[:8]}")
+    os.rename(workdir, target)
+    print(f"Warning: quarantined incompatible checkpoint ({reason}) at {target}", file=sys.stderr)
+
+
+def build_segment_cmd(base_cmd, src, destination, start, duration, has_audio=True):
+    """Turn a normal video command into a bounded, timestamp-normalized segment command."""
+    cmd = list(base_cmd)
+    output = cmd.pop()
+    del output
+    if cmd[-1] == "-y":
+        cmd.pop()
+    # Checkpoints always use Matroska segments, even for an eventual MP4 output.
+    # Drop output-container-only MP4 flags inherited from the monolithic command.
+    while "-movflags" in cmd:
+        option = cmd.index("-movflags")
+        del cmd[option:option + 2]
+    input_at = cmd.index("-i")
+    cmd[input_at:input_at] = ["-ss", f"{start:.6f}"]
+    # -t is an output option here and must follow the input URL. Inserting it
+    # between -i and the URL makes FFmpeg interpret the duration as the input.
+    input_at = cmd.index("-i")
+    cmd[input_at + 2:input_at + 2] = ["-t", f"{duration:.6f}"]
+    # Segment boundaries are deterministic source-time multiples. Seeking makes
+    # STARTPTS the selected boundary; forcing zero also normalizes each file.
+    insert_at = cmd.index("-c:v")
+    if "-vf" in cmd:
+        vf = cmd.index("-vf")
+        cmd[vf + 1] += ",setpts=PTS-STARTPTS"
+    else:
+        cmd[insert_at:insert_at] = ["-vf", "setpts=PTS-STARTPTS"]
+        insert_at += 2
+    cmd[insert_at:insert_at] = ["-force_key_frames", "expr:eq(n,0)"]
+    audio_codec = cmd[cmd.index("-c:a") + 1] if "-c:a" in cmd else None
+    if has_audio and audio_codec != "copy":
+        cmd += ["-af", "asetpts=PTS-STARTPTS"]
+    cmd += ["-avoid_negative_ts", "make_zero", "-y", str(destination)]
+    return cmd
+
+
+def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, quality,
+                               segment_duration, cuda_decode, progress_args, force_audio_fallback=False):
+    """Resume or create independently finalized segments, then concatenate them."""
+    workdir = checkpoint_path(src)
+    lock = CheckpointLock(workdir)
+    lock.acquire()
+    active_segment = None
+    try:
+        source_info = probe_media(src)
+        if source_info["video"] < 1 or source_info["duration"] <= 0:
+            raise ValueError("source has no video or a non-positive duration")
+        expected = {"audio": source_info["audio"],
+                    "subtitle": source_info["subtitle"] if profile["out_ext"] == ".mkv" else 0}
+        prototype = build_video_cmd(src, Path("SEGMENT.mkv"), profile, hw, threads,
+                                    quality_override=quality, cuda_decode=cuda_decode,
+                                    force_audio_fallback=force_audio_fallback)
+        while "-movflags" in prototype:
+            option = prototype.index("-movflags")
+            del prototype[option:option + 2]
+        signature = checkpoint_signature(src, profile_name, profile, hw, threads, quality,
+                                         segment_duration, prototype)
+        manifest_path = workdir / "manifest.json"
+        manifest = {**signature, "source_duration": source_info["duration"], "completed": []}
+        if manifest_path.exists():
+            try:
+                existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                quarantine_checkpoint(workdir, f"corrupt manifest: {exc}")
+                return transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads,
+                                                  quality, segment_duration, cuda_decode, progress_args)
+            if any(existing.get(key) != value for key, value in signature.items()):
+                quarantine_checkpoint(workdir, "source or encoding settings changed")
+                return transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads,
+                                                  quality, segment_duration, cuda_decode, progress_args)
+            manifest = existing
+        else:
+            atomic_json_write(manifest_path, manifest)
+
+        completed = validate_completed_segments(workdir, manifest, expected, manifest_path)
+
+        total_segments = max(1, int((source_info["duration"] + segment_duration - 1e-9) // segment_duration))
+        if total_segments * segment_duration < source_info["duration"] - .001:
+            total_segments += 1
+        for number in range(len(completed), total_segments):
+            start = number * segment_duration
+            length = min(segment_duration, source_info["duration"] - start)
+            active_segment = workdir / f"segment-{number:08d}.writing.mkv"
+            active_segment.unlink(missing_ok=True)
+            final_segment = workdir / f"segment-{number:08d}.mkv"
+            cmd = build_segment_cmd(prototype, src, active_segment, start, length,
+                                    has_audio=expected["audio"] > 0)
+            rc, stderr = run_ffmpeg_with_progress(cmd, *progress_args, src)
+            if rc != 0 and cuda_decode:
+                active_segment.unlink(missing_ok=True)
+                active_segment = None
+                quarantine_checkpoint(workdir, "CUDA decode failed; retrying with CPU decode")
+                return transcode_with_checkpoints(
+                    src, tmp, profile_name, profile, hw, threads, quality, segment_duration,
+                    False, progress_args, force_audio_fallback=force_audio_fallback,
+                )
+            if rc != 0 or not validate_segment(active_segment, expected, length):
+                active_segment.unlink(missing_ok=True)
+                active_segment = None
+                raise RuntimeError(ffmpeg_error_context(stderr, src))
+            os.replace(active_segment, final_segment)
+            active_segment = None
+            completed.append({"index": number, "file": final_segment.name,
+                              "source_start": start, "source_duration": length})
+            atomic_json_write(manifest_path, manifest)
+
+        concat_file = workdir / "concat.txt"
+        concat_file.write_text("".join(f"file '{(workdir / e['file']).as_posix().replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n"
+                                       for e in completed), encoding="utf-8")
+        tmp.unlink(missing_ok=True)
+        concat_cmd = ["ffmpeg", "-hide_banner", "-loglevel", "warning", "-f", "concat", "-safe", "0",
+                      "-i", str(concat_file), "-map", "0", "-c", "copy", "-y", str(tmp)]
+        rc, stderr = run_ffmpeg(concat_cmd)
+        if rc != 0 and not force_audio_fallback and profile["ext"] in {
+                ".avi", ".flv", ".m4v", ".mov", ".mpg", ".mpeg", ".rm", ".rmvb", ".wmv"} \
+                and is_audio_copy_compat_failure(stderr):
+            quarantine_checkpoint(workdir, "audio stream copy is incompatible with the final container")
+            return transcode_with_checkpoints(
+                src, tmp, profile_name, profile, hw, threads, quality, segment_duration,
+                cuda_decode, progress_args, force_audio_fallback=True,
+            )
+        if rc != 0:
+            raise RuntimeError(ffmpeg_error_context(stderr, src))
+        combined = probe_media(tmp)
+        tolerance = CHECKPOINT_DURATION_TOLERANCE_SECONDS
+        if combined["video"] < 1 or combined["audio"] != expected["audio"] \
+                or combined["subtitle"] != expected["subtitle"] \
+                or abs(combined["duration"] - source_info["duration"]) > tolerance:
+            tmp.unlink(missing_ok=True)
+            raise ValueError("concatenated checkpoint output failed stream or duration validation")
+        return workdir
+    except BaseException:
+        if active_segment is not None:
+            active_segment.unlink(missing_ok=True)
+        raise
+    finally:
+        lock.release()
 
 
 def existing_tmp_is_stable(path: Path, delay: float = 1.0):
@@ -475,6 +818,10 @@ def main():
     ap.add_argument("--skip-dir", action="append", default=[])
     ap.add_argument("--quality", type=int)
     ap.add_argument("--config")
+    ap.add_argument("--resume", action="store_true", default=None,
+                    help="Use reusable, independently verified segment checkpoints")
+    ap.add_argument("--segment-duration", type=float,
+                    help="Checkpoint segment length in seconds (default: 300)")
     ap.add_argument(
         "-c",
         "--cuda-decode",
@@ -528,11 +875,25 @@ def main():
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    resume_enabled = args.resume if args.resume is not None else config.get("resume", False)
+    if not isinstance(resume_enabled, bool):
+        print("Error: config key 'resume' must be a boolean", file=sys.stderr)
+        return 1
+    segment_duration = args.segment_duration if args.segment_duration is not None else config.get("segment_duration", 300)
+    if isinstance(segment_duration, bool) or not isinstance(segment_duration, (int, float)) or segment_duration <= 0:
+        print("Error: segment duration must be a positive number", file=sys.stderr)
+        return 1
+    segment_duration = float(segment_duration)
+    if resume_enabled and profile["mode"] != "video":
+        print("Warning: checkpoint/resume applies only to video profiles; using monolithic audio transcoding.", file=sys.stderr)
+        resume_enabled = False
 
-    files = root.rglob("*") if args.recurse else root.glob("*")
+    files = discover_paths(root, args.recurse)
     candidates = []
     for p in files:
         if not p.is_file():
+            continue
+        if is_checkpoint_internal_path(p):
             continue
         if p.suffix.lower() != profile["ext"]:
             continue
@@ -582,6 +943,7 @@ def main():
                 print(msg, file=sys.stderr)
                 duplicate_skips.append(msg)
                 continue
+            checkpoint_to_delete = None
             if tmp.exists():
                 if not existing_tmp_is_stable(tmp):
                     print(f"Skipping {src}: temporary output is still changing at {tmp}.", file=sys.stderr)
@@ -599,21 +961,54 @@ def main():
                     print(msg, file=sys.stderr)
                     duplicate_skips.append(msg)
                     continue
-                print(f"Removing stale temporary output before retrying: {tmp}", file=sys.stderr)
+                print(f"Removing legacy monolithic temporary output before retrying: {tmp}", file=sys.stderr)
                 tmp.unlink(missing_ok=True)
-            try:
-                claim_tmp_output(tmp)
-            except FileExistsError:
-                msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
-                print(msg, file=sys.stderr)
-                duplicate_skips.append(msg)
-                continue
-            except OSError as exc:
-                print(f"Error: unable to create temporary output claim for {src}: {exc}", file=sys.stderr)
-                transcode_failures += 1
-                continue
-            active_tmp = tmp
             cuda_decode_active = profile["mode"] == "video" and args.hw == "nvenc" and args.cuda_decode
+            if resume_enabled:
+                try:
+                    claim_tmp_output(tmp)
+                except FileExistsError:
+                    msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
+                except OSError as exc:
+                    print(f"Error: unable to claim temporary output for {src}: {exc}", file=sys.stderr)
+                    transcode_failures += 1
+                    continue
+                active_tmp = tmp
+                try:
+                    checkpoint_to_delete = transcode_with_checkpoints(
+                        src, tmp, args.profile, profile, args.hw, args.threads, selected_quality,
+                        segment_duration, cuda_decode_active, (i, len(candidates)),
+                    )
+                except FileExistsError as exc:
+                    tmp.unlink(missing_ok=True)
+                    active_tmp = None
+                    msg = f"Skipping {src}: {exc}"
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
+                except (OSError, ValueError, RuntimeError) as exc:
+                    tmp.unlink(missing_ok=True)
+                    active_tmp = None
+                    print(f"Error: checkpoint transcode failed for {src}: {exc}", file=sys.stderr)
+                    transcode_failures += 1
+                    continue
+                returncode, stderr_text = 0, ""
+            else:
+                try:
+                    claim_tmp_output(tmp)
+                except FileExistsError:
+                    msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
+                    print(msg, file=sys.stderr)
+                    duplicate_skips.append(msg)
+                    continue
+                except OSError as exc:
+                    print(f"Error: unable to create temporary output claim for {src}: {exc}", file=sys.stderr)
+                    transcode_failures += 1
+                    continue
+                active_tmp = tmp
             cmd = (
                 build_audio_cmd(src, tmp)
                 if profile["mode"] == "audio"
@@ -627,7 +1022,8 @@ def main():
                     cuda_decode=cuda_decode_active,
                 )
             )
-            returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
+            if not resume_enabled:
+                returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
             if returncode != 0 and cuda_decode_active:
                 print(f"CUDA decode failed for {src}; retrying with CPU decode and NVENC encode.", file=sys.stderr)
                 cuda_decode_active = False
@@ -756,15 +1152,21 @@ def main():
                 )
                 cleanup_warnings += 1
 
-            try:
-                src.unlink()
-                print(f"Successfully processed {src} -> {out}")
-            except Exception as e:
-                print(
-                    f"Error deleting source after successful output finalize for {src}: {e}. Output kept at {out}.",
-                    file=sys.stderr,
-                )
-                cleanup_warnings += 1
+            if checkpoint_to_delete is not None:
+                shutil.rmtree(checkpoint_to_delete, ignore_errors=True)
+
+            if profile.get("preserve_source"):
+                print(f"Successfully processed {src} -> {out}. Source preserved.")
+            else:
+                try:
+                    src.unlink()
+                    print(f"Successfully processed {src} -> {out}")
+                except Exception as e:
+                    print(
+                        f"Error deleting source after successful output finalize for {src}: {e}. Output kept at {out}.",
+                        file=sys.stderr,
+                    )
+                    cleanup_warnings += 1
             active_tmp = None
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)

@@ -25,7 +25,9 @@ param(
     [int]$Threads,
     [string[]]$SkipDir,
     [int]$Quality,
-    [string]$ConfigPath
+    [string]$ConfigPath,
+    [switch]$Resume,
+    [double]$SegmentDuration
 )
 
 $ErrorActionPreference = "Continue"
@@ -81,6 +83,12 @@ if ($SkipDir) {
 }
 if ($CudaDecode) {
     $childArgs += "-CudaDecode"
+}
+if ($Resume) {
+    $childArgs += "-Resume"
+}
+if ($PSBoundParameters.ContainsKey("SegmentDuration")) {
+    $childArgs += @("-SegmentDuration", $SegmentDuration)
 }
 
 function Invoke-ChildTranscodeScript {
