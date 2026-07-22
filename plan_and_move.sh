@@ -9,7 +9,7 @@ DISK_SIZE_TYPE="${DISK_SIZE_TYPE:-}"
 BASE_NAME="${BASE_NAME:-}"
 PLAN_FILE="${PLAN_FILE:-disk-plan.sh}"
 DRY_RUN=false
-APPLY_DISK_PLAN="${APPLY_DISK_PLAN:-./apply-disk-plan}"
+APPLY_DISK_PLAN="${APPLY_DISK_PLAN:-}"
 
 usage() {
     cat <<USAGE
@@ -25,6 +25,22 @@ need_value() {
         usage >&2
         exit 1
     fi
+}
+
+resolve_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+
+    while [[ -L "$source" ]]; do
+        local source_dir
+        source_dir=$(cd -P -- "$(dirname -- "$source")" && pwd)
+        source=$(readlink "$source")
+
+        if [[ "$source" != /* ]]; then
+            source="$source_dir/$source"
+        fi
+    done
+
+    cd -P -- "$(dirname -- "$source")" && pwd
 }
 
 while [[ $# -gt 0 ]]; do
@@ -59,6 +75,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ -z "$APPLY_DISK_PLAN" ]]; then
+    script_dir=""
+    script_dir=$(resolve_script_dir)
+    APPLY_DISK_PLAN="$script_dir/apply-disk-plan"
+fi
 
 apply_args=(--plan-file "$PLAN_FILE")
 if [[ -n "$DISK_SIZE_TYPE" ]]; then
