@@ -14,6 +14,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 - **Smart 4K downscaling**: Automatically downscales 4K+ video to aspect-safe 1080p
 - **Smart file handling**: Renames each file with spaces at encode time (spaces → underscores), skips already-processed files
 - **File type reporting**: Counts files by extension, lists matching full file paths, and generates per-folder reports
+- **Disk plan automation**: `plan_and_move` can apply disk plans interactively or with non-interactive disk size/base-name arguments
 
 ## Repository Structure
 
@@ -59,6 +60,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │       ├── flac-to-mp3.ps1
 │       ├── wav-to-mp3.ps1
 │       └── transcode_all_audio.ps1
+├── apply-disk-plan.py            # Apply disk move plans interactively or non-interactively
+├── plan_and_move                  # Bash wrapper for apply-disk-plan.py
 ├── HARDWARE_ACCEL_GUIDE.md        # Hardware acceleration setup guide
 └── README.md                      # This file
 ```
@@ -188,6 +191,35 @@ python3 ./cross-platform/one-level-recursive-file-type-report.py --output /path/
 .\windows\audio\wav-to-mp3.ps1
 .\windows\audio\transcode_all_audio.ps1
 ```
+
+
+### Disk Plan Move Automation
+
+Use `plan_and_move` to run `apply-disk-plan.py` from the repository root. By default, the Python script prompts for the disk type and base name. You can now pass either or both values on the command line to skip those prompts.
+
+```bash
+# Interactive: prompts for disk type and base name
+./plan_and_move
+
+# Non-interactive: disk type 2 means 50GB disks; base name is zzz
+./plan_and_move 2 zzz
+
+# Equivalent direct Python invocation
+python3 ./apply-disk-plan.py 2 zzz
+
+# Use a non-default plan file
+python3 ./apply-disk-plan.py 2 zzz --plan /path/to/disk-plan.txt
+```
+
+Disk type choices:
+
+| Disk type | Size | Example output intent |
+|-----------|------|-----------------------|
+| `1` | 25GB | Smaller disk batches |
+| `2` | 50GB | `./plan_and_move 2 zzz` creates/applies 50GB disk batches with base name `zzz` |
+| `3` | 100GB | Larger disk batches |
+
+If you omit only one positional value, `apply-disk-plan.py` uses the supplied value and prompts for the missing one. Invalid disk types or an empty base name fail with an `Error: ...` message instead of continuing with ambiguous settings.
 
 ### Recursive Processing
 

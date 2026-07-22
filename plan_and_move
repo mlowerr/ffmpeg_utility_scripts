@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -u
+shopt -s nullglob
+shopt -s nocaseglob
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+PYTHON_BIN=${PYTHON_BIN:-python3}
+
+usage() {
+    cat <<'EOF'
+Usage: plan_and_move [disk_type] [base_name]
+
+Runs apply-disk-plan.py. When disk_type and/or base_name are supplied, they are
+forwarded so apply-disk-plan.py does not prompt for those values.
+
+Disk type choices: 1=25GB, 2=50GB, 3=100GB
+Example: plan_and_move 2 zzz
+EOF
+}
+
+if [[ "${1-}" == "-h" || "${1-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+if (( $# > 2 )); then
+    usage >&2
+    exit 1
+fi
+
+exec "$PYTHON_BIN" "$SCRIPT_DIR/apply-disk-plan.py" "$@"
