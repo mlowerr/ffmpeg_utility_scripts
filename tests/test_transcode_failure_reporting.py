@@ -71,6 +71,31 @@ class ContinuedProcessingTests(unittest.TestCase):
             self.assertFalse(successful.exists())
             self.assertTrue((root / "b_REDU.mp4").exists())
 
+    def test_interrupt_summary_does_not_claim_processing_continued(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "a.mp4"
+            remaining = root / "b.mp4"
+            first.write_bytes(b"source")
+            remaining.write_bytes(b"source")
+
+            stderr = io.StringIO()
+            argv = ["transcode_cli.py", "--profile", "h264_mp4", "--path", str(root)]
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(cli, "run_ffmpeg_with_progress", side_effect=KeyboardInterrupt), \
+                    mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
+                    contextlib.redirect_stderr(stderr):
+                status = cli.main()
+
+            self.assertEqual(status, 1)
+            self.assertIn(
+                "processing was interrupted; remaining files were not attempted",
+                stderr.getvalue(),
+            )
+            self.assertNotIn("processing continued", stderr.getvalue())
+            self.assertTrue(first.exists())
+            self.assertTrue(remaining.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
