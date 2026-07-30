@@ -13,13 +13,19 @@ ffmpeg_utility_scripts/
 │   ├── file-type-report.py       # File type counting utility
 │   ├── files-by-extension.py     # Extension path listing utility
 │   ├── recursive-file-type-report.py # Per-folder type reports
+│   └── one-level-recursive-file-type-report.py # Combined child-folder reports
 ├── unix/
+│   ├── mkv-shrink                # Preserve-source MKV-to-small-MP4 workflow
 │   ├── video/
 │   │   ├── h264-transcode.sh
 │   │   ├── h264-avi-transcode.sh
 │   │   ├── h264-mov-transcode.sh
+│   │   ├── h264-m4v-transcode.sh
 │   │   ├── h264-mpg-transcode.sh
+│   │   ├── h264-mpeg-transcode.sh
 │   │   ├── h264-flv-transcode.sh
+│   │   ├── h264-rm-transcode.sh
+│   │   ├── h264-rmvb-transcode.sh
 │   │   ├── h264-wmv-transcode.sh
 │   │   ├── hevc-transcode.sh
 │   │   ├── hevc-mkv-transcode.sh
@@ -29,12 +35,17 @@ ffmpeg_utility_scripts/
 │       ├── wav-to-mp3.sh
 │       └── transcode_all_audio.sh
 └── windows/
+    ├── mkv-shrink.ps1
     ├── video/
     │   ├── h264-transcode.ps1
     │   ├── h264-avi-transcode.ps1
     │   ├── h264-mov-transcode.ps1
+    │   ├── h264-m4v-transcode.ps1
     │   ├── h264-mpg-transcode.ps1
+    │   ├── h264-mpeg-transcode.ps1
     │   ├── h264-flv-transcode.ps1
+    │   ├── h264-rm-transcode.ps1
+    │   ├── h264-rmvb-transcode.ps1
     │   ├── h264-wmv-transcode.ps1
     │   ├── hevc-transcode.ps1
     │   ├── hevc-mkv-transcode.ps1
@@ -183,10 +194,9 @@ process_file() {
     base_name=$(basename "$f")
 }
 
-# Main body - no local keyword
+# Main body - no local keyword (loops do not create a Bash local scope)
 files_to_process=()
 for f in *.mp4; do
-    local output  # This IS valid - inside a loop is function-like scope
     output="${f%.*}_REDU.mp4"
 done
 ```
@@ -195,24 +205,24 @@ done
 
 #### Hardware Acceleration
 ```bash
-# Intel QSV (4th gen+)
+# Representative Intel QSV settings (use the selected profile quality)
 VIDEO_CODEC="h264_qsv"  # or "hevc_qsv"
-QUALITY_OPTS="-global_quality 24"
+QUALITY_OPTS="-global_quality 26"
 PRESET="fast"
 
 # NVIDIA NVENC (Maxwell+)
 VIDEO_CODEC="h264_nvenc"  # or "hevc_nvenc"
-QUALITY_OPTS="-rc vbr -cq 24"
+QUALITY_OPTS="-rc vbr -cq 26"
 PRESET="p4"
 
 # AMD AMF (Polaris+)
 VIDEO_CODEC="h264_amf"  # or "hevc_amf"
-QUALITY_OPTS="-qp_p 24 -qp_i 24"
+QUALITY_OPTS="-qp_p 26 -qp_i 26"
 PRESET="speed"
 
 # Software fallback
 VIDEO_CODEC="libx264"  # or "libx265"
-QUALITY_OPTS="-crf 24"
+QUALITY_OPTS="-crf 26"
 PRESET="veryfast"
 ```
 
@@ -290,7 +300,7 @@ When modifying scripts, verify these edge cases:
 
 ## Known Limitations
 
-1. **Audio Copy Risk**: `-c:a copy` may fail with incompatible codecs (DTS, FLAC, etc.). The scripts validate stream count but don't re-encode on failure.
+1. **Audio Copy Compatibility**: Legacy H.264 profiles first try `-c:a copy` and retry recognized container-compatibility failures with AAC. Unrecognized FFmpeg failures remain hard failures rather than being masked by a retry.
 
 2. **Metadata Stripping**: `-map_metadata -1` removes ALL metadata including rotation tags. Mobile videos may lose orientation.
 
@@ -309,14 +319,14 @@ local -a files_to_process=()
 files_to_process=()
 ```
 
-### Don't Forget `local` in Loops
+### Don't Use `local` in Main-Body Loops
 ```bash
-# WRONG - pollutes global namespace
+# CORRECT - a loop does not introduce a local scope
 for f in *.mp4; do
     output="${f%.*}_REDU.mp4"
 done
 
-# CORRECT
+# WRONG - `local` is valid only in a function
 for f in *.mp4; do
     local output
     output="${f%.*}_REDU.mp4"
@@ -335,7 +345,9 @@ done
 ## Script Suffix Conventions
 
 - H.264 output: `_REDU.mp4`
-- HEVC output: `_HEVC.mp4` / `_HEVC.mkv`
+- HEVC shared-CLI output: `_HEVC_REDU.mp4` / `_HEVC_REDU.mkv`
+- Legacy `hevc-mkv-transcode.py` compatibility output: `_HEVC.mkv`
+- MKV shrink output: `_small.mp4` (the source is preserved)
 - Audio output: `.mp3` at 256 kbps
 - Temp files: `_REDU.tmp.mp4`, `_HEVC.tmp.mp4`, `_HEVC.tmp.mkv`, or `.tmp.mp3`
 
