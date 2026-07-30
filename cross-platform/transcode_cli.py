@@ -1216,6 +1216,7 @@ def main():
                     cleanup_warnings += 1
             active_tmp = None
     except KeyboardInterrupt:
+        interrupted = True
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
         record_failure(active_tmp or "active transcode", "interrupt", "processing was interrupted")
     finally:
@@ -1229,7 +1230,14 @@ def main():
                 file=sys.stderr,
             )
         if failure_records:
-            print(f"\nFailure summary: {len(failure_records)} file operation(s) failed; processing continued.", file=sys.stderr)
+            if interrupted:
+                summary_suffix = "processing was interrupted; remaining files were not attempted."
+            else:
+                summary_suffix = "processing continued."
+            print(
+                f"\nFailure summary: {len(failure_records)} file operation(s) failed; {summary_suffix}",
+                file=sys.stderr,
+            )
             for failure in failure_records:
                 print(
                     f"- {failure['source']} [{failure['stage']}]: {failure['reason']}",
