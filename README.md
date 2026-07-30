@@ -24,8 +24,10 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   ├── files-by-extension.py      # List full paths matching an extension (Python, cross-platform)
 │   ├── recursive-file-type-report.py # Per-folder type reports (Python, cross-platform)
 │   ├── one-level-recursive-file-type-report.py # Combined child-folder reports
-│   └── hevc-mkv-transcode.py      # HEVC/H.265 encoding for MKV (Python, cross-platform)
+│   ├── hevc-mkv-transcode.py      # Compatibility entry point for HEVC MKV encoding
+│   └── transcode_cli.py           # Shared transcoding engine used by the wrappers
 ├── unix/
+│   ├── mkv-shrink                 # Preserve-source MKV-to-small-MP4 workflow
 │   ├── video/
 │   │   ├── h264-transcode.sh
 │   │   ├── h264-avi-transcode.sh
@@ -34,6 +36,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-mpg-transcode.sh
 │   │   ├── h264-mpeg-transcode.sh
 │   │   ├── h264-flv-transcode.sh
+│   │   ├── h264-rm-transcode.sh
+│   │   ├── h264-rmvb-transcode.sh
 │   │   ├── h264-wmv-transcode.sh
 │   │   ├── hevc-transcode.sh
 │   │   ├── hevc-mkv-transcode.sh
@@ -43,6 +47,7 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │       ├── wav-to-mp3.sh
 │       └── transcode_all_audio.sh
 ├── windows/
+│   ├── mkv-shrink.ps1
 │   ├── video/
 │   │   ├── h264-transcode.ps1
 │   │   ├── h264-avi-transcode.ps1
@@ -51,6 +56,8 @@ A collection of cross-platform FFmpeg utility scripts. Supports H.264 and HEVC/H
 │   │   ├── h264-mpg-transcode.ps1
 │   │   ├── h264-mpeg-transcode.ps1
 │   │   ├── h264-flv-transcode.ps1
+│   │   ├── h264-rm-transcode.ps1
+│   │   ├── h264-rmvb-transcode.ps1
 │   │   ├── h264-wmv-transcode.ps1
 │   │   ├── hevc-transcode.ps1
 │   │   ├── hevc-mkv-transcode.ps1
@@ -136,8 +143,10 @@ Process supported video files in the current directory:
 ./unix/video/h264-mpg-transcode.sh   # MPG input
 ./unix/video/h264-mpeg-transcode.sh  # MPEG input/output
 ./unix/video/h264-flv-transcode.sh  # FLV input
+./unix/video/h264-rm-transcode.sh   # RM input, MPG output
+./unix/video/h264-rmvb-transcode.sh # RMVB input, MPG output
 ./unix/video/h264-wmv-transcode.sh  # WMV input
-./unix/video/transcode_all_video.sh        # AVI, FLV, MOV, M4V, MPG, MPEG, WMV, then MP4 inputs
+./unix/video/transcode_all_video.sh # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, then MP4
 
 # Linux/macOS - HEVC encoding
 ./unix/video/hevc-transcode.sh
@@ -150,8 +159,10 @@ Process supported video files in the current directory:
 .\windows\video\h264-mpg-transcode.ps1   # MPG input
 .\windows\video\h264-mpeg-transcode.ps1  # MPEG input/output
 .\windows\video\h264-flv-transcode.ps1  # FLV input
+.\windows\video\h264-rm-transcode.ps1   # RM input, MPG output
+.\windows\video\h264-rmvb-transcode.ps1 # RMVB input, MPG output
 .\windows\video\h264-wmv-transcode.ps1  # WMV input
-.\windows\video\transcode_all_video.ps1        # AVI, FLV, MOV, M4V, MPG, MPEG, WMV, then MP4 inputs
+.\windows\video\transcode_all_video.ps1 # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, then MP4
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\video\hevc-transcode.ps1
@@ -167,6 +178,10 @@ Process supported video files in the current directory:
 # Cross-platform Python - HEVC encoding (MKV input/output)
 python3 ./cross-platform/hevc-mkv-transcode.py
 python3 ./cross-platform/hevc-mkv-transcode.py --threads 8
+
+# Preserve-source MKV shrinking (1080p/30 fps HEVC video and 96 kbps AAC in MP4)
+./unix/mkv-shrink
+.\windows\mkv-shrink.ps1
 
 # Cross-platform Python - File type tools
 python3 ./cross-platform/file-type-report.py /path/to/media
@@ -202,6 +217,8 @@ Process supported video files from the current directory downward:
 ./unix/video/h264-mpg-transcode.sh -r
 ./unix/video/h264-mpeg-transcode.sh -r
 ./unix/video/h264-flv-transcode.sh -r
+./unix/video/h264-rm-transcode.sh -r
+./unix/video/h264-rmvb-transcode.sh -r
 ./unix/video/h264-wmv-transcode.sh -r
 ./unix/video/transcode_all_video.sh -r
 ./unix/video/hevc-transcode.sh -r
@@ -219,6 +236,8 @@ Process supported video files from the current directory downward:
 .\windows\video\h264-mpg-transcode.ps1 -Recurse
 .\windows\video\h264-mpeg-transcode.ps1 -Recurse
 .\windows\video\h264-flv-transcode.ps1 -Recurse
+.\windows\video\h264-rm-transcode.ps1 -Recurse
+.\windows\video\h264-rmvb-transcode.ps1 -Recurse
 .\windows\video\h264-wmv-transcode.ps1 -Recurse
 .\windows\video\transcode_all_video.ps1 -Recurse
 .\windows\video\hevc-transcode.ps1 -Recurse
@@ -296,6 +315,10 @@ The `transcode_cli.py`-backed wrappers support runtime overrides and user config
 - `--quality <N>` (Unix wrappers) / `-Quality <N>` (PowerShell wrappers): override video quality for this invocation (`0..51`).
 - `--skip-dir <PATH>` (Unix wrappers) / `-SkipDir <PATH[,PATH2...]>` (PowerShell wrappers): skip processing files under the provided directory path prefix.
 - `--config <PATH>` (Unix wrappers) / `-ConfigPath <PATH>` (PowerShell wrappers): read user preferences from a JSON config file.
+- `--resume` / `-Resume`: enable segmented checkpoint/resume for video profiles.
+- `--segment-duration <SECONDS>` / `-SegmentDuration <SECONDS>`: choose the checkpoint segment duration (default: 300 seconds).
+- `-c`/`--cuda-decode` / `-CudaDecode`: use CUDA decoding with NVENC; a CUDA decode failure is retried with CPU decoding.
+- `--threads <N>` / `-Threads <N>`: limit encoder threads where the selected encoder supports it.
 
 Config precedence is: CLI arguments > config values > profile defaults.
 
@@ -326,7 +349,7 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 ## How It Works
 
 1. **File Preparation**: If a selected input filename contains spaces, that file is renamed to use underscores immediately before encoding/conversion
-2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.m4v`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, combines detailed recursive reports for direct child folders, or lists full paths for a requested extension
+2. **File Collection**: Scans for eligible `.mp4`, `.avi`, `.mov`, `.m4v`, `.mpg`, `.mpeg`, `.flv`, `.rm`, `.rmvb`, `.wmv`, `.mkv`, `.flac`, or `.wav` files depending on the script (skips already-transcoded or already-converted files), scans all regular files when generating file type reports, combines detailed recursive reports for direct child folders, or lists full paths for a requested extension
 3. **UHD/4K Detection**: Detects if input video is larger than 1080p and applies aspect-safe downscaling where supported
 4. **Transcoding/Conversion**: Converts video using specified codec, copies audio for video workflows (and MKV subtitles in the MKV workflow), or converts FLAC/WAV audio to 256k MP3
 5. **Verification**: Validates output file integrity with ffprobe
@@ -334,10 +357,13 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 
 ## Output Files
 
-- **H.264 (MP4/AVI/MOV workflows)**: Creates `*_REDU.mp4` files
+- **H.264 (MP4/AVI/MOV/MPG/FLV/WMV workflows)**: Creates `*_REDU.mp4` files
 - **H.264 (M4V workflow)**: Creates `*_REDU.m4v` files
-- **HEVC (MP4 workflow)**: Creates `*_HEVC.mp4` files
-- **HEVC (MKV workflow)**: Creates `*_HEVC.mkv` files
+- **H.264 (MPEG workflow)**: Creates `*_REDU.mpeg` files
+- **H.264 (RM/RMVB workflows)**: Creates `*_REDU.mpg` files
+- **HEVC (MP4 workflow)**: Creates `*_HEVC_REDU.mp4` files
+- **HEVC (MKV wrapper workflow)**: Creates `*_HEVC_REDU.mkv` files; the Python compatibility entry point creates `*_HEVC.mkv`
+- **MKV shrink workflow**: Creates `*_small.mp4` and preserves the source MKV
 - **Audio conversion**: Creates `*.mp3` files at 256 kbps for FLAC/WAV inputs
 - **Temporary**: Uses `*.tmp.mp4`, `*.tmp.mkv`, or `*.tmp.mp3` during processing (auto-cleaned)
 
