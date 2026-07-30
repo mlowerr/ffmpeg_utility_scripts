@@ -362,11 +362,36 @@ def ffprobe_ok(path):
     return run_capture(["ffprobe", "-v", "error", str(path)]).returncode == 0
 
 
-def count_audio(path):
-    p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
-    if p.returncode != 0:
-        return 0
-    return len([x for x in p.stdout.splitlines() if x.strip()])
+def probe_audio_streams(path):
+    """Return audio stream details, preserving ffprobe failures for diagnostics."""
+    command = [
+        "ffprobe", "-v", "error", "-select_streams", "a",
+        "-show_entries", "stream=index,codec_name:stream_disposition:stream_tags=language,title",
+        "-of", "json", str(path),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip() or "No stderr output from ffprobe."
+        raise RuntimeError(f"ffprobe failed for {path}: {detail}")
+    try:
+        streams = json.loads(result.stdout).get("streams", [])
+    except (AttributeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"ffprobe returned invalid audio stream data for {path}: {exc}") from exc
+    if not isinstance(streams, list):
+        raise RuntimeError(f"ffprobe returned invalid audio stream data for {path}: streams is not a list")
+    return streams
+
+
+def format_audio_streams(streams):
+    if not streams:
+        return "none"
+    return "; ".join(
+        f"index={stream.get('index', '?')}, codec={stream.get('codec_name', 'unknown')}, "
+        f"language={stream.get('tags', {}).get('language', 'unknown')}, "
+        f"title={stream.get('tags', {}).get('title', 'none')}, "
+        f"default={stream.get('disposition', {}).get('default', 0)}"
+        for stream in streams
+    )
 
 
 def probe_media(path: Path):
@@ -921,10 +946,16 @@ def main():
         return 0
 
     transcode_failures = 0
+    failure_records = []
     cleanup_warnings = 0
     duplicate_skips = []
     active_tmp = None
     interrupted = False
+
+    def record_failure(source, stage, reason):
+        nonlocal transcode_failures
+        transcode_failures += 1
+        failure_records.append({"source": str(source), "stage": stage, "reason": str(reason)})
 
     def cleanup_and_exit(signum, _frame):
         nonlocal active_tmp, interrupted
@@ -977,7 +1008,7 @@ def main():
                     continue
                 except OSError as exc:
                     print(f"Error: unable to claim temporary output for {src}: {exc}", file=sys.stderr)
-                    transcode_failures += 1
+                    record_failure(src, "temporary output claim", exc)
                     continue
                 active_tmp = tmp
                 try:
@@ -996,7 +1027,7 @@ def main():
                     tmp.unlink(missing_ok=True)
                     active_tmp = None
                     print(f"Error: checkpoint transcode failed for {src}: {exc}", file=sys.stderr)
-                    transcode_failures += 1
+                    record_failure(src, "checkpoint transcode", exc)
                     continue
                 returncode, stderr_text = 0, ""
             else:
@@ -1009,7 +1040,7 @@ def main():
                     continue
                 except OSError as exc:
                     print(f"Error: unable to create temporary output claim for {src}: {exc}", file=sys.stderr)
-                    transcode_failures += 1
+                    record_failure(src, "temporary output claim", exc)
                     continue
                 active_tmp = tmp
             cmd = (
@@ -1040,7 +1071,7 @@ def main():
                     continue
                 except OSError as exc:
                     print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
-                    transcode_failures += 1
+                    record_failure(src, "CUDA retry preparation", exc)
                     active_tmp = None
                     continue
                 cmd = build_video_cmd(src, tmp, profile, args.hw, args.threads, quality_override=selected_quality)
@@ -1050,7 +1081,7 @@ def main():
                     fallback_reason = "retrying with a container-compatible audio codec"
                     if not is_audio_copy_compat_failure(stderr_text):
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
-                        transcode_failures += 1
+                        record_failure(src, "FFmpeg transcode", "FFmpeg failed; see diagnostics above")
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
@@ -1066,7 +1097,7 @@ def main():
                         continue
                     except OSError as exc:
                         print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
-                        transcode_failures += 1
+                        record_failure(src, "audio fallback preparation", exc)
                         active_tmp = None
                         continue
                     cmd = build_video_cmd(
@@ -1092,7 +1123,7 @@ def main():
                             continue
                         except OSError as exc:
                             print(f"Error: unable to reclaim temporary output for retrying {src}: {exc}", file=sys.stderr)
-                            transcode_failures += 1
+                            record_failure(src, "CUDA audio fallback preparation", exc)
                             active_tmp = None
                             continue
                         cmd = build_video_cmd(
@@ -1107,30 +1138,43 @@ def main():
                         returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:
                         print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
-                        transcode_failures += 1
+                        record_failure(src, "audio fallback transcode", "FFmpeg failed; see diagnostics above")
                         if tmp.exists():
                             tmp.unlink()
                         active_tmp = None
                         continue
                 else:
                     print(ffmpeg_error_context(stderr_text, src), file=sys.stderr)
-                    transcode_failures += 1
+                    record_failure(src, "FFmpeg transcode", "FFmpeg failed; see diagnostics above")
                     if tmp.exists():
                         tmp.unlink()
                     active_tmp = None
                     continue
             if not tmp.exists() or tmp.stat().st_size == 0 or not ffprobe_ok(tmp):
                 print(f"Error: Output verification failed for {src}", file=sys.stderr)
-                transcode_failures += 1
+                record_failure(src, "output verification", "temporary output is missing, empty, or unreadable")
                 if tmp.exists():
                     tmp.unlink()
                 active_tmp = None
                 continue
             if profile["mode"] == "video":
-                ina, outa = count_audio(src), count_audio(tmp)
-                if ina > 0 and outa < ina:
-                    print(f"Error: Audio stream mismatch for {src}", file=sys.stderr)
-                    transcode_failures += 1
+                try:
+                    input_audio = probe_audio_streams(src)
+                    output_audio = probe_audio_streams(tmp)
+                except RuntimeError as exc:
+                    print(f"Error: Audio stream validation failed for {src}: {exc}", file=sys.stderr)
+                    record_failure(src, "audio stream probe", exc)
+                    tmp.unlink(missing_ok=True)
+                    active_tmp = None
+                    continue
+                if input_audio and len(output_audio) < len(input_audio):
+                    reason = (
+                        f"input audio streams: {len(input_audio)}; output audio streams: {len(output_audio)}; "
+                        f"input details: [{format_audio_streams(input_audio)}]; "
+                        f"output details: [{format_audio_streams(output_audio)}]"
+                    )
+                    print(f"Error: Audio stream mismatch for {src}: {reason}", file=sys.stderr)
+                    record_failure(src, "audio stream validation", reason)
                     tmp.unlink(missing_ok=True)
                     active_tmp = None
                     continue
@@ -1138,13 +1182,13 @@ def main():
                 finalized_tmp_removed = finalize_output_no_overwrite(tmp, out)
             except FileExistsError:
                 print(f"Error: Destination already exists for {src}: {out}", file=sys.stderr)
-                transcode_failures += 1
+                record_failure(src, "output finalize", f"destination already exists: {out}")
                 tmp.unlink(missing_ok=True)
                 active_tmp = None
                 continue
             except Exception as e:
                 print(f"Error moving temporary output into place for {src}: {e}", file=sys.stderr)
-                transcode_failures += 1
+                record_failure(src, "output finalize", e)
                 tmp.unlink(missing_ok=True)
                 active_tmp = None
                 continue
@@ -1173,7 +1217,7 @@ def main():
             active_tmp = None
     except KeyboardInterrupt:
         print("\nInterrupted. Cleaned up active temporary output file.", file=sys.stderr)
-        transcode_failures += 1
+        record_failure(active_tmp or "active transcode", "interrupt", "processing was interrupted")
     finally:
         if duplicate_skips:
             print("\nDuplicate-skip summary:", file=sys.stderr)
@@ -1184,8 +1228,15 @@ def main():
                 f"\nCleanup warning summary: {cleanup_warnings} source cleanup issue(s). Output files were kept.",
                 file=sys.stderr,
             )
+        if failure_records:
+            print(f"\nFailure summary: {len(failure_records)} file operation(s) failed; processing continued.", file=sys.stderr)
+            for failure in failure_records:
+                print(
+                    f"- {failure['source']} [{failure['stage']}]: {failure['reason']}",
+                    file=sys.stderr,
+                )
 
-    hard_failures = transcode_failures + (1 if interrupted else 0)
+    hard_failures = transcode_failures
     if args.strict_cleanup:
         hard_failures += cleanup_warnings
 

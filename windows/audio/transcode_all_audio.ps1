@@ -86,7 +86,7 @@ function Invoke-ChildTranscodeScript {
         Write-Host "=== Completed $ScriptName successfully ==="
     }
     else {
-        Write-Error "$ScriptName exited with status $status. Continuing with remaining scripts."
+        Write-Warning "$ScriptName reported one or more file failures (status $status). See its failure summary above. Continuing with remaining scripts."
         $script:failedCount++
     }
 }
