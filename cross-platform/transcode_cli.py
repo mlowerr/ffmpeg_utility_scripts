@@ -268,7 +268,7 @@ def detect_dimensions(path):
 
 def fallback_audio_layout_options(audio_streams):
     """Return per-output-stream layouts needed for ambiguous mono inputs."""
-    unspecified_layouts = {"", "unknown", "unspecified", "n/a", "none"}
+    unspecified_layouts = {"", "unknown", "unspecified", "n/a", "none", "1 channel", "1 channels"}
     options = []
     for output_index, stream in enumerate(audio_streams or []):
         layout = stream.get("channel_layout")
@@ -1110,6 +1110,15 @@ def main():
                         continue
                     print(f"Audio copy failed for {src}; {fallback_reason}.")
                     try:
+                        fallback_audio_streams = probe_audio_streams(src)
+                    except RuntimeError as exc:
+                        print(f"Error: unable to probe audio streams for fallback on {src}: {exc}", file=sys.stderr)
+                        record_failure(src, "audio fallback probe", exc)
+                        if tmp.exists():
+                            tmp.unlink()
+                        active_tmp = None
+                        continue
+                    try:
                         reclaim_tmp_output_for_retry(tmp)
                     except FileExistsError:
                         msg = f"Skipping {src}: temporary output claim already exists at {tmp}."
@@ -1131,7 +1140,7 @@ def main():
                         quality_override=selected_quality,
                         force_audio_fallback=True,
                         cuda_decode=cuda_decode_active,
-                        audio_streams=probe_audio_streams(src),
+                        audio_streams=fallback_audio_streams,
                     )
                     returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0 and cuda_decode_active:
@@ -1157,7 +1166,7 @@ def main():
                             args.threads,
                             quality_override=selected_quality,
                             force_audio_fallback=True,
-                            audio_streams=probe_audio_streams(src),
+                            audio_streams=fallback_audio_streams,
                         )
                         returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:

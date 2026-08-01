@@ -53,6 +53,13 @@ class AudioFallbackCommandTests(unittest.TestCase):
         self.assertNotIn("-channel_layout:a:1", command)
         self.assertNotIn("-channel_layout", command)
 
+    def test_ffprobe_one_channels_layout_is_treated_as_unspecified(self):
+        streams = [{"index": 1, "channels": 1, "channel_layout": "1 channels"}]
+        command = self.fallback_command("h264_flv", streams)
+
+        self.assertIn("-channel_layout:a:0", command)
+        self.assertEqual(command[command.index("-channel_layout:a:0") + 1], "mono")
+
     def test_valid_stereo_and_multichannel_layouts_are_not_forced(self):
         streams = [
             {"index": 1, "channels": 2, "channel_layout": "stereo"},
