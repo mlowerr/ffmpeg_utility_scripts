@@ -20,10 +20,23 @@ SPEC.loader.exec_module(cli)
 
 class AudioProbeTests(unittest.TestCase):
     def test_probe_audio_streams_returns_diagnostic_fields(self):
-        payload = {"streams": [{"index": 1, "codec_name": "aac", "tags": {"language": "eng"}}]}
+        payload = {"streams": [{"index": 1, "codec_name": "aac", "channels": 1,
+                                "channel_layout": "unknown", "tags": {"language": "eng"}}]}
         completed = subprocess.CompletedProcess([], 0, json.dumps(payload), "")
         with mock.patch.object(cli.subprocess, "run", return_value=completed):
             self.assertEqual(cli.probe_audio_streams("movie.mp4"), payload["streams"])
+            command = cli.subprocess.run.call_args.args[0]
+            fields = command[command.index("-show_entries") + 1]
+            self.assertIn("channels", fields)
+            self.assertIn("channel_layout", fields)
+
+    def test_audio_diagnostic_includes_channel_fields(self):
+        diagnostic = cli.format_audio_streams([
+            {"index": 1, "codec_name": "speex", "channels": 1, "channel_layout": "unknown"},
+        ])
+
+        self.assertIn("channels=1", diagnostic)
+        self.assertIn("channel_layout=unknown", diagnostic)
 
     def test_probe_audio_streams_preserves_ffprobe_failure(self):
         completed = subprocess.CompletedProcess([], 1, "", "access denied")

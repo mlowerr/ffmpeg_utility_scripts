@@ -266,7 +266,20 @@ def detect_dimensions(path):
         return None, None
 
 
-def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_audio_fallback=False, cuda_decode=False):
+def fallback_audio_layout_options(audio_streams):
+    """Return per-output-stream layouts needed for ambiguous mono inputs."""
+    unspecified_layouts = {"", "unknown", "unspecified", "n/a", "none"}
+    options = []
+    for output_index, stream in enumerate(audio_streams or []):
+        layout = stream.get("channel_layout")
+        normalized_layout = str(layout or "").strip().lower()
+        if stream.get("channels") == 1 and normalized_layout in unspecified_layouts:
+            options += [f"-channel_layout:a:{output_index}", "mono"]
+    return options
+
+
+def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force_audio_fallback=False,
+                    cuda_decode=False, audio_streams=None):
     q = quality_override if quality_override is not None else profile["quality"]
     scale_opts = []
     cuda_filter = None
@@ -340,6 +353,8 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     if force_audio_fallback:
         fallback_codec = "mp2" if profile["out_ext"] in {".mpg", ".mpeg"} else "aac"
         audio_opts = ["-c:a", fallback_codec, "-b:a", "192k"]
+        if fallback_codec == "aac":
+            audio_opts += fallback_audio_layout_options(audio_streams)
     if profile.get("video_filter"):
         scale_opts = ["-vf", profile["video_filter"]]
     cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, *audio_opts, "-map_metadata", "-1"]
@@ -367,7 +382,7 @@ def probe_audio_streams(path):
     """Return audio stream details, preserving ffprobe failures for diagnostics."""
     command = [
         "ffprobe", "-v", "error", "-select_streams", "a",
-        "-show_entries", "stream=index,codec_name:stream_disposition:stream_tags=language,title",
+        "-show_entries", "stream=index,codec_name,channels,channel_layout:stream_disposition:stream_tags=language,title",
         "-of", "json", str(path),
     ]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -388,6 +403,8 @@ def format_audio_streams(streams):
         return "none"
     return "; ".join(
         f"index={stream.get('index', '?')}, codec={stream.get('codec_name', 'unknown')}, "
+        f"channels={stream.get('channels', 'unknown')}, "
+        f"channel_layout={stream.get('channel_layout', 'unknown')}, "
         f"language={stream.get('tags', {}).get('language', 'unknown')}, "
         f"title={stream.get('tags', {}).get('title', 'none')}, "
         f"default={stream.get('disposition', {}).get('default', 0)}"
@@ -615,9 +632,11 @@ def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, qua
             raise ValueError("source has no video or a non-positive duration")
         expected = {"audio": source_info["audio"],
                     "subtitle": source_info["subtitle"] if profile["out_ext"] == ".mkv" else 0}
+        fallback_audio_streams = probe_audio_streams(src) if force_audio_fallback else None
         prototype = build_video_cmd(src, Path("SEGMENT.mkv"), profile, hw, threads,
                                     quality_override=quality, cuda_decode=cuda_decode,
-                                    force_audio_fallback=force_audio_fallback)
+                                    force_audio_fallback=force_audio_fallback,
+                                    audio_streams=fallback_audio_streams)
         while "-movflags" in prototype:
             option = prototype.index("-movflags")
             del prototype[option:option + 2]
@@ -1112,6 +1131,7 @@ def main():
                         quality_override=selected_quality,
                         force_audio_fallback=True,
                         cuda_decode=cuda_decode_active,
+                        audio_streams=probe_audio_streams(src),
                     )
                     returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0 and cuda_decode_active:
@@ -1137,6 +1157,7 @@ def main():
                             args.threads,
                             quality_override=selected_quality,
                             force_audio_fallback=True,
+                            audio_streams=probe_audio_streams(src),
                         )
                         returncode, stderr_text = run_ffmpeg_with_progress(cmd, i, len(candidates), src)
                     if returncode != 0:
