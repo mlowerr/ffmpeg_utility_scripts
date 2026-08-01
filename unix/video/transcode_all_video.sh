@@ -1,7 +1,8 @@
 #!/bin/bash
 # Video Transcode-All Driver Script
 # =================================
-# Runs the AVI, FLV, MOV, MPG, MPEG, RM, RMVB, WMV, and MP4 H.264 transcode scripts in order.
+# Runs the AVI, FLV, MOV, MPG, MPEG, RM, RMVB, WMV, and MP4 H.264 transcode scripts,
+# followed by the MKV HEVC transcode script.
 #
 # USAGE:
 #   ./transcode_all_video.sh      # Process current directory only
@@ -143,5 +144,6 @@ run_child_script "h264-rm-transcode.sh"
 run_child_script "h264-rmvb-transcode.sh"
 run_child_script "h264-wmv-transcode.sh"
 run_child_script "h264-transcode.sh"
+run_child_script "hevc-mkv-transcode.sh"
 
 exit $(( FAILED_COUNT > 0 ? 1 : 0 ))

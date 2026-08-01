@@ -146,7 +146,7 @@ Process supported video files in the current directory:
 ./unix/video/h264-rm-transcode.sh   # RM input, MPG output
 ./unix/video/h264-rmvb-transcode.sh # RMVB input, MPG output
 ./unix/video/h264-wmv-transcode.sh  # WMV input
-./unix/video/transcode_all_video.sh # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, then MP4
+./unix/video/transcode_all_video.sh # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, MP4, then MKV-to-HEVC
 
 # Linux/macOS - HEVC encoding
 ./unix/video/hevc-transcode.sh
@@ -162,7 +162,7 @@ Process supported video files in the current directory:
 .\windows\video\h264-rm-transcode.ps1   # RM input, MPG output
 .\windows\video\h264-rmvb-transcode.ps1 # RMVB input, MPG output
 .\windows\video\h264-wmv-transcode.ps1  # WMV input
-.\windows\video\transcode_all_video.ps1 # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, then MP4
+.\windows\video\transcode_all_video.ps1 # AVI, FLV, MOV, M4V, MPG, MPEG, RM, RMVB, WMV, MP4, then MKV-to-HEVC
 
 # Windows - HEVC encoding (PowerShell)
 .\windows\video\hevc-transcode.ps1
