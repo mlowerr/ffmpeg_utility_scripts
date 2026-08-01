@@ -1,6 +1,7 @@
 # Video Transcode-All Driver Script
 # =================================
-# Runs the AVI, FLV, MOV, MPG, MPEG, RM, RMVB, WMV, and MP4 H.264 transcode scripts in order.
+# Runs the AVI, FLV, MOV, MPG, MPEG, RM, RMVB, WMV, and MP4 H.264 transcode scripts,
+# followed by the MKV HEVC transcode script.
 #
 # USAGE:
 #   .\transcode_all_video.ps1           # Process current directory only
@@ -131,6 +132,7 @@ Invoke-ChildTranscodeScript -ScriptName "h264-rm-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-rmvb-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-wmv-transcode.ps1"
 Invoke-ChildTranscodeScript -ScriptName "h264-transcode.ps1"
+Invoke-ChildTranscodeScript -ScriptName "hevc-mkv-transcode.ps1"
 
 if ($failedCount -gt 0) {
     exit 1
