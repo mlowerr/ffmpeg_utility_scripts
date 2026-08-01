@@ -217,6 +217,7 @@ def is_audio_copy_compat_failure(stderr: str):
         "could not find tag for codec",
         "codec not currently supported in container",
         "unsupported codec",
+        "unsupported audio codec",
         "invalid argument",
     )
     return any(sig in normalized for sig in signatures)
@@ -337,7 +338,7 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
     if profile.get("audio_bitrate"):
         audio_opts += ["-b:a", profile["audio_bitrate"]]
     if force_audio_fallback:
-        fallback_codec = "mp2" if profile["out_ext"] == ".mpeg" else "aac"
+        fallback_codec = "mp2" if profile["out_ext"] in {".mpg", ".mpeg"} else "aac"
         audio_opts = ["-c:a", fallback_codec, "-b:a", "192k"]
     if profile.get("video_filter"):
         scale_opts = ["-vf", profile["video_filter"]]
@@ -630,11 +631,13 @@ def transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads, qua
             except (OSError, json.JSONDecodeError) as exc:
                 quarantine_checkpoint(workdir, f"corrupt manifest: {exc}")
                 return transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads,
-                                                  quality, segment_duration, cuda_decode, progress_args)
+                                                  quality, segment_duration, cuda_decode, progress_args,
+                                                  force_audio_fallback=force_audio_fallback)
             if any(existing.get(key) != value for key, value in signature.items()):
                 quarantine_checkpoint(workdir, "source or encoding settings changed")
                 return transcode_with_checkpoints(src, tmp, profile_name, profile, hw, threads,
-                                                  quality, segment_duration, cuda_decode, progress_args)
+                                                  quality, segment_duration, cuda_decode, progress_args,
+                                                  force_audio_fallback=force_audio_fallback)
             manifest = existing
         else:
             atomic_json_write(manifest_path, manifest)
