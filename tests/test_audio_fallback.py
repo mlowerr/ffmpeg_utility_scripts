@@ -82,6 +82,43 @@ class AudioCopyCompatibilityTests(unittest.TestCase):
         diagnostic = "[mp4 @ 0x1234] Unsupported audio codec: pcm_s16le"
         self.assertTrue(cli.is_audio_copy_compat_failure(diagnostic))
 
+    def test_audio_stream_tag_diagnostic_triggers_fallback(self):
+        diagnostic = "Could not find tag for codec wmav2 in stream #0:1, codec not currently supported in container"
+        self.assertTrue(cli.is_audio_copy_compat_failure(diagnostic))
+
+    def test_h264_tag_diagnostic_does_not_trigger_audio_fallback(self):
+        diagnostic = "Could not find tag for codec h264 in stream #0, codec not currently supported in container"
+        self.assertFalse(cli.is_audio_copy_compat_failure(diagnostic))
+
+    def test_generic_invalid_argument_does_not_trigger_audio_fallback(self):
+        diagnostic = "MB rate (108000000) > level limit (16711680)\nInvalid argument"
+        self.assertFalse(cli.is_audio_copy_compat_failure(diagnostic))
+
+
+class WmvCommandNormalizationTests(unittest.TestCase):
+    def build_wmv_command(self, normalize):
+        with mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
+                mock.patch.object(cli, "wmv_needs_timing_normalization", return_value=normalize):
+            return cli.build_video_cmd(
+                Path("input.wmv"), Path("output.mp4"), cli.PROFILES["h264_wmv"],
+                "software", 0,
+            )
+
+    def test_invalid_wmv_timing_is_normalized_for_mp4(self):
+        command = self.build_wmv_command(True)
+        self.assertEqual(command[command.index("-c:v") + 1], "libx264")
+        self.assertEqual(command[command.index("-crf") + 1], "24")
+        self.assertEqual(command[command.index("-tag:v") + 1], "avc1")
+        self.assertEqual(command[command.index("-fps_mode") + 1], "cfr")
+        self.assertEqual(command[command.index("-r") + 1], "30")
+        self.assertIn("0:v:0?", command)
+
+    def test_normal_wmv_timing_is_not_overridden(self):
+        command = self.build_wmv_command(False)
+        self.assertNotIn("-fps_mode", command)
+        self.assertNotIn("-r", command)
+        self.assertEqual(command[command.index("-tag:v") + 1], "avc1")
+
 
 if __name__ == "__main__":
     unittest.main()
