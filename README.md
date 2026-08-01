@@ -360,7 +360,7 @@ Invalid config quality values now fail gracefully with an `Error: ...` message (
 - **H.264 (MP4/AVI/MOV/MPG/FLV/WMV workflows)**: Creates `*_REDU.mp4` files
 - **H.264 (M4V workflow)**: Creates `*_REDU.m4v` files
 - **H.264 (MPEG workflow)**: Creates `*_REDU.mpeg` files
-- **H.264 (RM/RMVB workflows)**: Creates `*_REDU.mpg` files
+- **H.264 (RM/RMVB workflows)**: Creates `*_REDU.mpg` files; if source-audio copying is incompatible, the retry uses MP2 audio at 192 kbps
 - **HEVC (MP4 workflow)**: Creates `*_HEVC_REDU.mp4` files
 - **HEVC (MKV wrapper workflow)**: Creates `*_HEVC_REDU.mkv` files; the Python compatibility entry point creates `*_HEVC.mkv`
 - **MKV shrink workflow**: Creates `*_small.mp4` and preserves the source MKV
