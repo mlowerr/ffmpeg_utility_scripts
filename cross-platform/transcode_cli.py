@@ -11,6 +11,7 @@ import sys
 import time
 import uuid
 from collections import deque
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 
@@ -213,14 +214,18 @@ def run_ffmpeg_with_progress(cmd, file_index, total_files, source_path):
 
 def is_audio_copy_compat_failure(stderr: str):
     normalized = stderr.lower()
+    if "unsupported audio codec" in normalized:
+        return True
     signatures = (
         "could not find tag for codec",
         "codec not currently supported in container",
         "unsupported codec",
-        "unsupported audio codec",
-        "invalid argument",
     )
-    return any(sig in normalized for sig in signatures)
+    if not any(sig in normalized for sig in signatures):
+        return False
+    if any(codec in normalized for codec in ("codec h264", "codec hevc", "codec av1", "codec vp8", "codec vp9")):
+        return False
+    return True
 
 
 def ffmpeg_error_context(stderr_text: str, src: Path):
@@ -264,6 +269,35 @@ def detect_dimensions(path):
         return int(parts[0]), int(parts[1])
     except ValueError:
         return None, None
+
+
+def wmv_needs_timing_normalization(path):
+    """Detect WMV frame rates that exceed practical H.264/MP4 limits."""
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=avg_frame_rate,r_frame_rate,time_base",
+             "-of", "json", str(path)],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    if probe.returncode != 0:
+        return False
+    try:
+        stream = json.loads(probe.stdout).get("streams", [])[0]
+    except (AttributeError, IndexError, json.JSONDecodeError):
+        return False
+    rates = []
+    for name in ("avg_frame_rate", "r_frame_rate"):
+        try:
+            rate = float(Fraction(stream.get(name, "0/0")))
+        except (ValueError, ZeroDivisionError):
+            rate = 0
+        if rate > 0:
+            rates.append(rate)
+    return bool(rates) and max(rates) > 240
 
 
 def fallback_audio_layout_options(audio_streams):
@@ -359,7 +393,9 @@ def build_video_cmd(src, tmp, profile, hw, threads, quality_override=None, force
         scale_opts = ["-vf", profile["video_filter"]]
     cmd += scale_opts + ["-c:v", codec, *qopts, "-preset", preset, *audio_opts, "-map_metadata", "-1"]
     if profile["out_ext"] == ".mp4":
-        cmd += ["-movflags", "+faststart"]
+        cmd += ["-tag:v", "hvc1" if is_hevc else "avc1", "-movflags", "+faststart"]
+    if profile["ext"] == ".wmv" and wmv_needs_timing_normalization(src):
+        cmd += ["-fps_mode", "cfr", "-r", "30"]
 
     if is_hevc and codec == "libx265" and threads:
         cmd += ["-x265-params", f"pools={threads}"]
