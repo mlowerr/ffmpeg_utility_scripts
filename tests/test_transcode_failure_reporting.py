@@ -68,10 +68,10 @@ class ContinuedProcessingTests(unittest.TestCase):
             stderr = io.StringIO()
             argv = ["transcode_cli.py", "--profile", "h264_flv", "--path", str(root)]
             with mock.patch.object(sys, "argv", argv), \
-                    mock.patch.object(cli, "run_ffmpeg_with_progress", side_effect=run_transcode), \
-                    mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
-                    mock.patch.object(cli, "ffprobe_ok", return_value=True), \
-                    mock.patch.object(cli, "probe_audio_streams", side_effect=audio_streams), \
+                    mock.patch.object(cli.ffmpeg, "run_ffmpeg_with_progress", side_effect=run_transcode), \
+                    mock.patch.object(cli.ffmpeg, "detect_dimensions", return_value=(1920, 1080)), \
+                    mock.patch.object(cli.ffmpeg, "ffprobe_ok", return_value=True), \
+                    mock.patch.object(cli.ffmpeg, "probe_audio_streams", side_effect=audio_streams), \
                     contextlib.redirect_stderr(stderr):
                 status = cli.main()
 
@@ -104,10 +104,10 @@ class ContinuedProcessingTests(unittest.TestCase):
             stderr = io.StringIO()
             argv = ["transcode_cli.py", "--profile", "h264_mp4", "--path", str(root)]
             with mock.patch.object(sys, "argv", argv), \
-                    mock.patch.object(cli, "run_ffmpeg_with_progress", side_effect=run_transcode), \
-                    mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
-                    mock.patch.object(cli, "ffprobe_ok", return_value=True), \
-                    mock.patch.object(cli, "probe_audio_streams", side_effect=audio_streams), \
+                    mock.patch.object(cli.ffmpeg, "run_ffmpeg_with_progress", side_effect=run_transcode), \
+                    mock.patch.object(cli.ffmpeg, "detect_dimensions", return_value=(1920, 1080)), \
+                    mock.patch.object(cli.ffmpeg, "ffprobe_ok", return_value=True), \
+                    mock.patch.object(cli.ffmpeg, "probe_audio_streams", side_effect=audio_streams), \
                     contextlib.redirect_stderr(stderr):
                 status = cli.main()
 
@@ -130,8 +130,8 @@ class ContinuedProcessingTests(unittest.TestCase):
             stderr = io.StringIO()
             argv = ["transcode_cli.py", "--profile", "h264_mp4", "--path", str(root)]
             with mock.patch.object(sys, "argv", argv), \
-                    mock.patch.object(cli, "run_ffmpeg_with_progress", side_effect=KeyboardInterrupt), \
-                    mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
+                    mock.patch.object(cli.ffmpeg, "run_ffmpeg_with_progress", side_effect=KeyboardInterrupt), \
+                    mock.patch.object(cli.ffmpeg, "detect_dimensions", return_value=(1920, 1080)), \
                     contextlib.redirect_stderr(stderr):
                 status = cli.main()
 

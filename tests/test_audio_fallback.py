@@ -14,7 +14,7 @@ SPEC.loader.exec_module(cli)
 
 class AudioFallbackCommandTests(unittest.TestCase):
     def fallback_command(self, profile_name, audio_streams=None):
-        with mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)):
+        with mock.patch.object(cli.ffmpeg, "detect_dimensions", return_value=(1920, 1080)):
             return cli.build_video_cmd(
                 Path(f"input{cli.PROFILES[profile_name]['ext']}"),
                 Path(f"output{cli.PROFILES[profile_name]['out_ext']}"),
@@ -97,8 +97,8 @@ class AudioCopyCompatibilityTests(unittest.TestCase):
 
 class WmvCommandNormalizationTests(unittest.TestCase):
     def build_wmv_command(self, normalize):
-        with mock.patch.object(cli, "detect_dimensions", return_value=(1920, 1080)), \
-                mock.patch.object(cli, "wmv_needs_timing_normalization", return_value=normalize):
+        with mock.patch.object(cli.ffmpeg, "detect_dimensions", return_value=(1920, 1080)), \
+                mock.patch.object(cli.ffmpeg, "wmv_needs_timing_normalization", return_value=normalize):
             return cli.build_video_cmd(
                 Path("input.wmv"), Path("output.mp4"), cli.PROFILES["h264_wmv"],
                 "software", 0,
