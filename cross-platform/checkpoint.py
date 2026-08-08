@@ -60,8 +60,10 @@ class CheckpointLock:
 
     def acquire(self):
         self.directory.parent.mkdir(parents=True, exist_ok=True)
+        created = False
         try:
             self.directory.mkdir()
+            created = True
         except FileExistsError:
             try:
                 current = json.loads((self.directory / "owner.json").read_text(encoding="utf-8"))
@@ -80,9 +82,18 @@ class CheckpointLock:
                 os.rename(self.directory, stale)
                 shutil.rmtree(stale, ignore_errors=True)
                 self.directory.mkdir()
+                created = True
             except OSError as exc:
                 raise FileExistsError(f"could not recover checkpoint lock: {exc}") from exc
-        output.atomic_json_write(self.directory / "owner.json", self.owner)
+        try:
+            output.atomic_json_write(self.directory / "owner.json", self.owner)
+        except BaseException:
+            # A directory without its ownership record blocks all other users
+            # until the long stale-lock lease expires. Remove only the lock
+            # directory created by this acquisition attempt.
+            if created:
+                shutil.rmtree(self.directory, ignore_errors=True)
+            raise
 
     def release(self):
         try:

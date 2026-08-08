@@ -239,15 +239,27 @@ def process_one(session, original_src, index, total, job):
             return
     else:
         if job.profile["mode"] == "audio":
-            returncode, stderr_text = ffmpeg.run_ffmpeg_with_progress(
-                ffmpeg.build_audio_cmd(src, tmp), *progress_args, src)
+            try:
+                returncode, stderr_text = ffmpeg.run_ffmpeg_with_progress(
+                    ffmpeg.build_audio_cmd(src, tmp), *progress_args, src)
+            except (OSError, UnicodeError) as exc:
+                print(f"Error: unable to launch or read FFmpeg for {src}: {exc}", file=sys.stderr)
+                session.record_failure(src, "FFmpeg invocation", exc)
+                tmp.unlink(missing_ok=True)
+                return
             if returncode != 0:
                 print(ffmpeg.ffmpeg_error_context(stderr_text, src), file=sys.stderr)
                 session.record_failure(src, "FFmpeg transcode", "FFmpeg failed; see diagnostics above")
                 tmp.unlink(missing_ok=True)
                 return
         else:
-            status, stage, payload = run_video_with_retries(src, tmp, job, progress_args)
+            try:
+                status, stage, payload = run_video_with_retries(src, tmp, job, progress_args)
+            except (OSError, UnicodeError) as exc:
+                print(f"Error: unable to launch or read FFmpeg/FFprobe for {src}: {exc}", file=sys.stderr)
+                session.record_failure(src, "FFmpeg invocation", exc)
+                tmp.unlink(missing_ok=True)
+                return
             if status == "skip-claim":
                 session.skip(f"Skipping {src}: temporary output claim already exists at {tmp}.")
                 return
@@ -268,7 +280,14 @@ def process_one(session, original_src, index, total, job):
                 tmp.unlink(missing_ok=True)
                 return
 
-    if not tmp.exists() or tmp.stat().st_size == 0 or not ffmpeg.ffprobe_ok(tmp):
+    try:
+        output_is_valid = tmp.exists() and tmp.stat().st_size > 0 and ffmpeg.ffprobe_ok(tmp)
+    except (OSError, UnicodeError) as exc:
+        print(f"Error: unable to launch or read FFprobe for {src}: {exc}", file=sys.stderr)
+        session.record_failure(src, "output verification", exc)
+        tmp.unlink(missing_ok=True)
+        return
+    if not output_is_valid:
         print(f"Error: Output verification failed for {src}", file=sys.stderr)
         session.record_failure(src, "output verification", "temporary output is missing, empty, or unreadable")
         tmp.unlink(missing_ok=True)
@@ -418,12 +437,20 @@ def main():
 
     files = profiles.discover_paths(root, args.recurse)
     candidates = []
+    rejected_filenames = 0
     for p in files:
         if not p.is_file():
             continue
         if profiles.is_checkpoint_internal_path(p):
             continue
         if p.suffix.lower() != profile["ext"]:
+            continue
+        if profiles.has_unsafe_filename(p):
+            print(
+                f"Error: filename contains a newline or carriage return: {str(p)!r}",
+                file=sys.stderr,
+            )
+            rejected_filenames += 1
             continue
         if profiles.is_temporary_transcode_path(p):
             continue
@@ -443,9 +470,8 @@ def main():
 
     if not candidates:
         print(f"No eligible {profile['ext']} files found to process.")
-        return 0
+        return 1 if rejected_filenames else 0
 
-    transcode_failures = 0
     session = TranscodeSession()
 
     def cleanup_and_exit(signum, _frame):
@@ -504,7 +530,7 @@ def main():
                     file=sys.stderr,
                 )
 
-    hard_failures = session.failures
+    hard_failures = session.failures + rejected_filenames
     if args.strict_cleanup:
         hard_failures += session.cleanup_warnings
 

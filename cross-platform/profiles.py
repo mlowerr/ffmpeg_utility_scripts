@@ -86,7 +86,19 @@ def should_skip_file(file_path: Path, skip_dirs):
 
 
 def is_temporary_transcode_path(path: Path):
-    return ".tmp." in path.name.lower()
+    """Return whether *path* has the temporary-output naming shape.
+
+    Temporary outputs insert ``.tmp`` immediately before their final
+    extension.  Looking for ``.tmp.`` anywhere in the name incorrectly hid
+    legitimate inputs such as ``family.tmp.archive.mp4``.
+    """
+    suffix = path.suffix.lower()
+    return bool(suffix) and path.name.lower().endswith(f".tmp{suffix}")
+
+
+def has_unsafe_filename(path: Path):
+    """Return whether a filename cannot be represented safely in line logs."""
+    return "\n" in path.name or "\r" in path.name
 
 
 def is_checkpoint_internal_path(path: Path):

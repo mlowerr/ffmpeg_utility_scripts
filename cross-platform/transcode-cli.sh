@@ -32,6 +32,7 @@ CUDA_DECODE=false
 RESUME=false
 SEGMENT_DURATION=""
 SEARCH_DIR=""
+SEARCH_DIR_SET=false
 SKIP_DIRS=()
 
 need_value() {
@@ -57,7 +58,16 @@ while [[ $# -gt 0 ]]; do
         --segment-duration) need_value "$1" "${2-}"; SEGMENT_DURATION="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         -*) usage >&2; exit 1 ;;
-        *) SEARCH_DIR="$1"; shift ;;
+        *)
+            if [[ "$SEARCH_DIR_SET" == true ]]; then
+                echo "Error: only one search directory may be specified." >&2
+                usage >&2
+                exit 1
+            fi
+            SEARCH_DIR="$1"
+            SEARCH_DIR_SET=true
+            shift
+            ;;
     esac
 done
 
@@ -74,4 +84,21 @@ args+=(--hw "$HW")
 for d in "${SKIP_DIRS[@]}"; do
     args+=(--skip-dir "$d")
 done
-exec python3 "$(dirname "$0")/transcode_cli.py" "${args[@]}"
+# Resolve this launcher's real location so calls through an external symlink still
+# find the Python entry point in the same directory.
+resolve_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+
+    while [[ -L "$source" ]]; do
+        local source_dir
+        source_dir=$(cd -P -- "$(dirname -- "$source")" && pwd)
+        source=$(readlink "$source")
+        [[ "$source" == /* ]] || source="$source_dir/$source"
+    done
+
+    cd -P -- "$(dirname -- "$source")" && pwd
+}
+
+script_dir=""
+script_dir=$(resolve_script_dir)
+exec python3 "$script_dir/transcode_cli.py" "${args[@]}"
