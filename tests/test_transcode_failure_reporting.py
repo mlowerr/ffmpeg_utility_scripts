@@ -46,6 +46,40 @@ class AudioProbeTests(unittest.TestCase):
 
 
 class ContinuedProcessingTests(unittest.TestCase):
+    def test_missing_ffmpeg_is_reported_and_claim_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "audio.wav"
+            source.write_bytes(b"source")
+            stderr = io.StringIO()
+            argv = ["transcode_cli.py", "--profile", "wav_mp3", "--path", str(root)]
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(cli.ffmpeg, "run_ffmpeg_with_progress",
+                                      side_effect=FileNotFoundError("ffmpeg missing")), \
+                    contextlib.redirect_stderr(stderr):
+                status = cli.main()
+
+            self.assertEqual(status, 1)
+            self.assertIn("FFmpeg invocation", stderr.getvalue())
+            self.assertFalse((root / "audio.tmp.mp3").exists())
+            self.assertTrue(source.exists())
+
+    @unittest.skipIf(sys.platform == "win32", "POSIX atomic normalization path")
+    def test_normalize_name_never_replaces_racing_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "my movie.mp4"
+            destination = root / "my_movie.mp4"
+            source.write_bytes(b"source")
+            destination.write_bytes(b"other")
+
+            normalized, renamed = cli.output.normalize_input_name(source)
+
+            self.assertFalse(renamed)
+            self.assertEqual(normalized, source)
+            self.assertEqual(source.read_bytes(), b"source")
+            self.assertEqual(destination.read_bytes(), b"other")
+
     def test_fallback_probe_failure_is_reported_and_batch_continues(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

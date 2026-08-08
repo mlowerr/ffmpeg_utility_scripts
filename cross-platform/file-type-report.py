@@ -10,8 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 NO_EXTENSION_LABEL = "[no extension]"
-TRANSCODED_MARKER = "_REDU"
-TEMPORARY_MARKER = ".tmp"
+TRANSCODED_SUFFIXES = (
+    "_redu.mp4",
+    "_redu.m4v",
+    "_redu.mpeg",
+    "_redu.mpg",
+    "_hevc_redu.mp4",
+    "_hevc_redu.mkv",
+    "_hevc.mkv",
+    "_small.mp4",
+)
 
 
 @dataclass(frozen=True)
@@ -61,13 +69,14 @@ def normalize_file_type(file_path: Path) -> str:
 
 
 def is_temporary_file(file_path: Path) -> bool:
-    """Return True when the file name contains a temporary .tmp marker."""
-    return TEMPORARY_MARKER in file_path.name.lower()
+    """Return True when ``.tmp`` occurs immediately before the extension."""
+    suffix = file_path.suffix.lower()
+    return bool(suffix) and file_path.name.lower().endswith(f".tmp{suffix}")
 
 
 def is_transcoded_file(file_path: Path) -> bool:
-    """Return True when the file name contains the transcoded _REDU marker."""
-    return TRANSCODED_MARKER.lower() in file_path.name.lower()
+    """Return True for a canonical completed video-output suffix."""
+    return file_path.name.lower().endswith(TRANSCODED_SUFFIXES)
 
 
 def discover_files(target_directory: Path, recursive: bool) -> list[Path]:

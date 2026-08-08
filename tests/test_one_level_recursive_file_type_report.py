@@ -70,11 +70,11 @@ class OneLevelRecursiveReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             self.touch(root / "first" / "movie.mp4")
-            self.touch(root / "first" / "done_REDU.avi")
+            self.touch(root / "first" / "done_REDU.mp4")
             self.touch(root / "first" / "work.tmp.mov")
             self.touch(root / "first" / "movie_REDU.tmp.mp4")
             (root / "first" / "empty").mkdir()
-            self.touch(root / "second" / "done_REDU.mkv")
+            self.touch(root / "second" / "done_HEVC_REDU.mkv")
             self.touch(root / "second" / "ignored.txt")
 
             result = self.run_report(root)

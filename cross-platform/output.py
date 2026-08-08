@@ -146,13 +146,25 @@ def normalize_input_name(path: Path):
     if " " not in path.name:
         return path, False
     normalized = path.with_name(path.name.replace(" ", "_"))
-    if normalized.exists():
-        print(f"Warning: Cannot rename {path} -> {normalized} (target exists).", file=sys.stderr)
-        return path, False
     try:
-        path.replace(normalized)
+        if os.name == "nt":
+            # Same-directory os.rename is a no-overwrite operation on Windows.
+            os.rename(path, normalized)
+        else:
+            # Linking is an atomic no-overwrite claim for the normalized name.
+            # Do not fall back to check-then-rename: that can destroy a file
+            # created by another process between the check and the rename.
+            os.link(path, normalized)
+            try:
+                path.unlink()
+            except OSError:
+                normalized.unlink(missing_ok=True)
+                raise
         print(f"Renamed {path} -> {normalized}")
         return normalized, True
+    except FileExistsError:
+        print(f"Warning: Cannot rename {path} -> {normalized} (target exists).", file=sys.stderr)
+        return path, False
     except OSError as exc:
         print(f"Warning: Failed to rename {path} -> {normalized}: {exc}", file=sys.stderr)
         return path, False

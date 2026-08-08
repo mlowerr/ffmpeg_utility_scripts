@@ -31,6 +31,12 @@ param(
     [double]$SegmentDuration
 )
 
+$hardwareSelectionCount = @($UseQuickSync, $UseNVENC, $UseAMF).Where({ $_ }).Count
+if ($hardwareSelectionCount -gt 1) {
+    Write-Error "UseQuickSync, UseNVENC, and UseAMF are mutually exclusive. Select at most one hardware encoder."
+    exit 1
+}
+
 $ErrorActionPreference = "Continue"
 $failedCount = 0
 # Resolve the driver location so child scripts are loaded next to this file,
@@ -46,14 +52,10 @@ else {
 }
 $resolvedScriptPath = (Resolve-Path -LiteralPath $scriptPath).ProviderPath
 $scriptDir = Split-Path -Parent $resolvedScriptPath
-$powerShellCommand = if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-    "pwsh"
-}
-elseif (Get-Command powershell.exe -ErrorAction SilentlyContinue) {
-    "powershell.exe"
-}
-else {
-    "powershell"
+$powerShellCommand = Get-Command pwsh, powershell.exe, powershell -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $powerShellCommand) {
+    Write-Error "No PowerShell executable found. Install PowerShell and ensure pwsh or powershell is on PATH."
+    exit 1
 }
 
 $childArgs = @()
@@ -110,8 +112,21 @@ function Invoke-ChildTranscodeScript {
     Write-Host "=== Running $ScriptName ==="
 
     $processArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $scriptPath) + $childArgs
-    & $powerShellCommand @processArgs
-    $status = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+    try {
+        & $powerShellCommand.Source @processArgs
+        $invocationSucceeded = $?
+        $status = $LASTEXITCODE
+    }
+    catch {
+        Write-Error "Failed to launch ${ScriptName}: $_"
+        $script:failedCount++
+        return
+    }
+    if (-not $invocationSucceeded -or $null -eq $status) {
+        Write-Error "Failed to launch ${ScriptName}: PowerShell did not return a process exit status."
+        $script:failedCount++
+        return
+    }
 
     if ($status -eq 0) {
         Write-Host "=== Completed $ScriptName successfully ==="

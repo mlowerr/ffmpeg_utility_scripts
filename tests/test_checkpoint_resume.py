@@ -158,6 +158,14 @@ class CheckpointTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             cli.CheckpointLock(work).acquire()
 
+    def test_failed_owner_write_removes_new_lock(self):
+        work = cli.checkpoint_path(self.source)
+        lock = cli.CheckpointLock(work)
+        with mock.patch.object(cli.output, "atomic_json_write", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                lock.acquire()
+        self.assertFalse(lock.directory.exists())
+
     def test_segment_command_normalizes_timestamps_and_boundaries(self):
         base = cli.build_video_cmd(self.source, Path("unused.mkv"), cli.PROFILES["mkv_shrink"], "software", 0, 26)
         command = cli.build_segment_cmd(base, self.source, self.root / "part.writing.mkv", 60, 30, True)
